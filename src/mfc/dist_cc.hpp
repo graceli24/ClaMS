@@ -1,19 +1,18 @@
 // Copyright 2023-2026 Lawrence Livermore National Security, LLC and other ClaMS
 // Project Developers. See the top-level COPYRIGHT file for details.
 
-
 #pragma once
 
-#include <iostream>
-#include <vector>
 #include <filesystem>
+#include <iostream>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
-#include <metall/utility/metall_mpi_adaptor.hpp>
-#include <ygm/comm.hpp>
 #include <boost/unordered/unordered_flat_map.hpp>
 #include <boost/unordered/unordered_flat_set.hpp>
+#include <metall/utility/metall_mpi_adaptor.hpp>
+#include <ygm/comm.hpp>
 
 #include "../common.hpp"
 
@@ -22,8 +21,7 @@ class dist_cc {
   using self_t = dist_cc;
 
  public:
-  using cc_table_t =
-      boost::unordered_flat_map<clams::id_t, clams::id_t>;
+  using cc_table_t = boost::unordered_flat_map<clams::id_t, clams::id_t>;
 
   dist_cc(ygm::comm &world, const clams::pm_knng_t &knng)
       : m_world(world), m_knng(knng) {}
@@ -34,9 +32,8 @@ class dist_cc {
     {
       const auto uknng = priv_make_undirected_graph();
       m_world.cout0() << "Converted to undirected knng with "
-                      << m_world.all_reduce_sum(uknng.num_points())
-                      << " points and "
-                      << m_world.all_reduce_sum(uknng.count_all_neighbors())
+                      << ygm::sum(uknng.num_points(), m_world) << " points and "
+                      << ygm::sum(uknng.count_all_neighbors(), m_world)
                       << " edges." << std::endl;
       priv_run_cc(uknng);
     }
@@ -104,7 +101,7 @@ class dist_cc {
     }
     m_world.barrier();
 
-    uknng.merge(const_cast<clams::pm_knng_t&>(m_knng));
+    uknng.merge(const_cast<clams::pm_knng_t &>(m_knng));
     for (auto pitr = uknng.points_begin(), pend = uknng.points_end();
          pitr != pend; ++pitr) {
       const auto &source = pitr->first;
@@ -134,7 +131,7 @@ class dist_cc {
     for (auto pitr = knng.points_begin(), pend = knng.points_end();
          pitr != pend; ++pitr) {
       const auto &source = pitr->first;
-      const auto cc_id = m_cc_table.at(source);
+      const auto  cc_id  = m_cc_table.at(source);
       if (cc_id != source) {
         // Already processed
         continue;
@@ -170,7 +167,7 @@ class dist_cc {
         [](const auto &table) {
           for (const auto &entry : table) {
             const auto cc_id = entry.first;
-            const auto size = entry.second;
+            const auto size  = entry.second;
             if (g_cc_size_table.count(cc_id) == 0) {
               g_cc_size_table[cc_id] = 0;
             }
@@ -183,10 +180,10 @@ class dist_cc {
     return std::move(g_cc_size_table);
   }
 
-  ygm::comm &m_world;
+  ygm::comm              &m_world;
   const clams::pm_knng_t &m_knng;  // Original KNNG
-  cc_table_t m_cc_table{};
-  ygm::ygm_ptr<self_t> m_self{this};
+  cc_table_t              m_cc_table{};
+  ygm::ygm_ptr<self_t>    m_self{this};
   // KNNG used for CC, could be undirected or directed
   std::optional<clams::pm_knng_t> m_ref_knng;
 };

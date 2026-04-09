@@ -348,7 +348,7 @@ void write_output_single_file(const std::string         &output_filename,
 
 void write_output_single_pm(const std::string         &output_filename,
                             const std::vector<edge_t> &edges, ygm::comm &c) {
-  const size_t num_edges = c.all_reduce_sum(edges.size());
+  const size_t num_edges = ygm::sum(edges.size(), c);
 
   MPI_Comm mpi_comm = c.get_mpi_comm();
   if (c.rank0()) {
