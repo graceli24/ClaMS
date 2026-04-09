@@ -31,22 +31,29 @@ using edge_t = std::tuple<id_t, id_t, distance_t>;
 void usage(ygm::comm &comm) {
   if (comm.rank0()) {
     std::cerr << "Usage: " << std::endl
-              << "./build_amst -i <input_file> Input text file(s) containing "
+              << "./build_amst <options>" << std::endl
+              << "Must include exactly one of <input_file> or <pm_input_path>"
+              << std::endl
+              << "Options: " << std::endl
+              << "  -i <input_file> Path to input text file(s) containing "
                  "approximate nearest-neighbor graph"
               << std::endl
               << "  -d <pm_input_path> PM datastore path for DNND data"
               << std::endl
               << "  -p <pm_output_path> PM datastore path for MST edges"
               << std::endl
-              << "  -e <float> Approximation bound (default: 0.5)" << std::endl
+              << "  -o <output_file> Path to text file to output MST edges. "
+                 "Will only be used if pm_output_path is not provided"
+              << std::endl
+              << "  -e <float> Approximation bound (default: 2.0)" << std::endl
               << "  -h Show this help message" << std::endl;
   }
 }
 
 void parse_cmd_line(int argc, char **argv, ygm::comm &comm, float &approx_bound,
                     std::vector<std::string> &txt_input_filenames,
-                    std::string              &pm_input_path,
-                    std::string              &pm_output_filename) {
+                    std::string &pm_input_path, std::string &pm_output_filename,
+                    std::string &txt_output_filename) {
   if (comm.rank0()) {
     std::cout << "CMD line:";
     for (int i = 0; i < argc; ++i) {
@@ -55,11 +62,12 @@ void parse_cmd_line(int argc, char **argv, ygm::comm &comm, float &approx_bound,
     std::cout << std::endl;
   }
 
-  int  c;
-  bool inserting_input_filenames = false;
-  bool prn_help                  = false;
+  int                   c;
+  bool                  inserting_input_filenames = false;
+  std::filesystem::path txt_input_file_path;
+  bool                  prn_help = false;
   while (true) {
-    while ((c = getopt(argc, argv, "+e:i:d:p:h ")) != -1) {
+    while ((c = getopt(argc, argv, "+e:i:d:p:o:h")) != -1) {
       inserting_input_filenames = false;
       switch (c) {
         case 'h':
@@ -70,12 +78,16 @@ void parse_cmd_line(int argc, char **argv, ygm::comm &comm, float &approx_bound,
           break;
         case 'i':
           inserting_input_filenames = true;
+          txt_input_file_path       = optarg;
           break;
         case 'd':
           pm_input_path = optarg;
           break;
         case 'p':
           pm_output_filename = optarg;
+          break;
+        case 'o':
+          txt_output_filename = optarg;
           break;
         default:
           std::cerr << "Unrecognized option: " << c << ", ignore." << std::endl;
@@ -90,6 +102,14 @@ void parse_cmd_line(int argc, char **argv, ygm::comm &comm, float &approx_bound,
     }
 
     ++optind;
+  }
+
+  if (inserting_input_filenames) {
+    std::vector<std::filesystem::path> input_paths =
+        clams::find_files(txt_input_file_path);
+    for (std::filesystem::path &p : input_paths) {
+      txt_input_filenames.push_back(p.string());
+    }
   }
 
   // Detect misconfigured options
@@ -386,9 +406,10 @@ int main(int argc, char **argv) {
   std::string              pm_input_path;
   std::string              pm_output_filename;
   float                    amst_approx_bound{2.0};
+  std::string              txt_output_filename;
 
   parse_cmd_line(argc, argv, world, amst_approx_bound, txt_input_filenames,
-                 pm_input_path, pm_output_filename);
+                 pm_input_path, pm_output_filename, txt_output_filename);
 
   world.cout0("Reading edges");
   ygm::utility::timer read_timer;
@@ -409,6 +430,10 @@ int main(int argc, char **argv) {
   ygm::utility::timer output_timer;
   if (!pm_output_filename.empty()) {
     write_output_single_pm(pm_output_filename, amst_edges, world);
+  } else if (txt_output_filename != "") {
+    write_output_single_file(txt_output_filename, amst_edges, world);
+  } else {
+    world.cout0("Error: No valid output path provided");
   }
   world.cout0("Output writing time (s): ", output_timer.elapsed());
 
