@@ -4,16 +4,16 @@
 #define CLAMS_USE_SALTATLAS
 #define METALL_DISABLE_CONCURRENCY
 
-#include <iostream>
-#include <vector>
-#include <string_view>
 #include <filesystem>
+#include <iostream>
 #include <string>
+#include <string_view>
+#include <vector>
 
 #include "build_knng.hpp"
 
-using id_t = clams::id_t;
-using fe_t = clams::fe_t;
+using id_t   = clams::id_t;
+using fe_t   = clams::fe_t;
 using dist_t = clams::distance_t;
 
 int main(int argc, char **argv) {
@@ -21,7 +21,7 @@ int main(int argc, char **argv) {
   clams::show_config<id_t, fe_t, dist_t>(comm);
   {
     clams::option_t opt;
-    bool help{false};
+    bool            help{false};
     if (!clams::parse_options(argc, argv, opt, help)) {
       comm.cerr0() << "Invalid option" << std::endl;
       clams::usage(argv[0], comm.cerr0());
@@ -35,7 +35,7 @@ int main(int argc, char **argv) {
 
     {
       clams::dnnd_t g(saltatlas::create_only, opt.scratchpath, comm,
-                          std::random_device{}(), opt.verbose);
+                      std::random_device{}(), opt.verbose);
       {
         comm.cout0() << "\n<<Read Points>>" << std::endl;
         const auto paths =
@@ -54,8 +54,8 @@ int main(int argc, char **argv) {
         index_id = g.build(
             saltatlas::distance::convert_to_distance_id(opt.distance_name),
             opt.index_k, opt.r, opt.delta);
-        comm.cout0() << "\nkNNG construction took (s)\t" << const_timer.elapsed()
-                     << std::endl;
+        comm.cout0() << "\nkNNG construction took (s)\t"
+                     << const_timer.elapsed() << std::endl;
       }
     }
     comm.cf_barrier();

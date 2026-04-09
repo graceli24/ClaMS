@@ -1,7 +1,6 @@
 // Copyright 2023-2026 Lawrence Livermore National Security, LLC and other ClaMS
 // Project Developers. See the top-level COPYRIGHT file for details.
 
-
 #define CLAMS_USE_SALTATLAS
 #define METALL_DISABLE_CONCURRENCY
 
@@ -9,11 +8,11 @@
 #include <algorithm>
 #include <cstdlib>
 #include <filesystem>
-#include <iostream>
-#include <vector>
 #include <fstream>
+#include <iostream>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <metall/metall.hpp>
 
@@ -55,15 +54,14 @@ void parse_option(int argc, char *argv[], std::filesystem::path &pm_knng_path,
 }
 
 int main(int argc, char *argv[]) {
-
   ygm::comm comm(&argc, &argv);
 
   std::filesystem::path pm_knng_path;
   std::filesystem::path output_path;
   parse_option(argc, argv, pm_knng_path, output_path);
 
-  dnnd_t dnnd(saltatlas::open_read_only, pm_knng_path, comm);
-  const auto knng_id= dnnd.get_index_ids().front();
+  dnnd_t     dnnd(saltatlas::open_read_only, pm_knng_path, comm);
+  const auto knng_id = dnnd.get_index_ids().front();
   dnnd.dump_graph(knng_id, output_path, true);
   comm.cf_barrier();
   comm.cout0("Finished dumping KNNG to: ", output_path.string());

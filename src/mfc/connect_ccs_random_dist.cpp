@@ -1,7 +1,6 @@
 // Copyright 2023-2026 Lawrence Livermore National Security, LLC and other ClaMS
 // Project Developers. See the top-level COPYRIGHT file for details.
 
-
 // Connect connected components by adding random bridge edges.
 
 #define CLAMS_USE_SALTATLAS
@@ -11,11 +10,11 @@
 #include <filesystem>
 #include <iostream>
 
+#include <boost/unordered/unordered_flat_map.hpp>
+#include <boost/unordered/unordered_flat_set.hpp>
 #include <metall/utility/metall_mpi_adaptor.hpp>
 #include <ygm/comm.hpp>
 #include <ygm/utility/timer.hpp>
-#include <boost/unordered/unordered_flat_map.hpp>
-#include <boost/unordered/unordered_flat_set.hpp>
 
 #include "../common.hpp"
 #include "dist_cc.hpp"
@@ -36,8 +35,8 @@ void show_usage(const char *prog_name) {
 
 bool parse_option(int argc, char *argv[],
                   std::filesystem::path &dnnd_datastore_path,
-                  std::string &distance_name,
-                  std::string &bridge_edge_dump_file) {
+                  std::string           &distance_name,
+                  std::string           &bridge_edge_dump_file) {
   int opt;
   dnnd_datastore_path.clear();
   distance_name.clear();
@@ -79,8 +78,8 @@ int main(int argc, char **argv) {
   ygm::comm comm(&argc, &argv);
 
   std::filesystem::path dnnd_datastore_path;
-  std::string distance_name;
-  std::string bridge_edge_dump_file;
+  std::string           distance_name;
+  std::string           bridge_edge_dump_file;
   const bool opt_parse_ret = parse_option(argc, argv, dnnd_datastore_path,
                                           distance_name, bridge_edge_dump_file);
   if (!opt_parse_ret) {
@@ -102,21 +101,21 @@ int main(int argc, char **argv) {
         dnnd.get_index(dnnd.get_index_ids().front()));
 
     ygm::utility::timer cc_timer;
-    dist_cc cc(comm, knng);
+    dist_cc             cc(comm, knng);
     cc.run_cc();
     const auto cc_size_table = cc.count_cc_size();
     assert(comm.rank0() || cc_size_table.empty());
     comm.cout0() << "CC took (s): " << cc_timer.elapsed() << std::endl;
     comm.cout0() << "#of CCs: " << cc_size_table.size() << std::endl;
 
-    id_t largest_cc_id = -1;
+    id_t        largest_cc_id   = -1;
     std::size_t largest_cc_size = 0;
     for (const auto &cc : cc_size_table) {
       comm.cout0() << "CC ID: " << cc.first << ", Size: " << cc.second
                    << std::endl;
       if (cc.second > largest_cc_size) {
         largest_cc_size = cc.second;
-        largest_cc_id = cc.first;
+        largest_cc_id   = cc.first;
       }
     }
     comm.cout0() << "Largest CC's size: " << largest_cc_size
@@ -124,11 +123,11 @@ int main(int argc, char **argv) {
 
     comm.cout0() << "Connect small CCs to the largest CC" << std::endl;
     ygm::utility::timer connect_timer;
-    static auto ref_distance_func =
+    static auto         ref_distance_func =
         saltatlas::distance::distance_function<cls::point_t, cls::distance_t>(
             distance_name);
     static std::vector<std::tuple<cls::id_t, cls::id_t, cls::distance_t>>
-        local_bridge_edges;
+                       local_bridge_edges;
     static const auto &ref_dnnd = dnnd;
     for (const auto &cc : cc_size_table) {
       const auto &pid = cc.first;
@@ -144,7 +143,7 @@ int main(int argc, char **argv) {
                 [](const cls::id_t &large, const cls::id_t &small,
                    const auto &large_fv) {
                   const auto &small_fv = ref_dnnd.get_local_point(small);
-                  const auto d = ref_distance_func(large_fv, small_fv);
+                  const auto  d        = ref_distance_func(large_fv, small_fv);
                   knng.insert(small, cls::neighbor_t(large, d));
                   // Store the bridge edge
                   local_bridge_edges.emplace_back(large, small, d);

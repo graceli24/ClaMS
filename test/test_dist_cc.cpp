@@ -1,7 +1,6 @@
 // Copyright 2023-2026 Lawrence Livermore National Security, LLC and other ClaMS
 // Project Developers. See the top-level COPYRIGHT file for details.
 
-
 // Connect connected components by adding random bridge edges.
 
 #define CLAMS_USE_SALTATLAS
@@ -29,8 +28,7 @@ int main(int argc, char **argv) {
   };
 
   for (const auto &edge : edges) {
-    if (clams::dnnd_t::get_owner(edge.first, world.size()) ==
-        world.rank()) {
+    if (clams::dnnd_t::get_owner(edge.first, world.size()) == world.rank()) {
       knng.insert(edge.first,
                   clams::pm_knng_t::neighbor_type(edge.second, 1.0f));
     }
@@ -66,7 +64,7 @@ int main(int argc, char **argv) {
 
   const auto cc_size_table = cc.count_cc_size();
   if (world.rank0()) {
-    auto result_checker = [&cc_size_table](const id_t cc_id,
+    auto result_checker = [&cc_size_table](const id_t   cc_id,
                                            const size_t expected_size) {
       if (cc_size_table.at(cc_id) != expected_size) {
         std::cerr << "CC ID " << cc_id
@@ -78,7 +76,7 @@ int main(int argc, char **argv) {
 
     for (const auto &cc_size : cc_size_table) {
       const auto cc_id = cc_size.first;
-      const auto size = cc_size.second;
+      const auto size  = cc_size.second;
       if (cc_id == 0) {
         result_checker(cc_id, 3);  // Component 1
       } else if (cc_id == 3) {

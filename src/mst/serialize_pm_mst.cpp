@@ -1,28 +1,27 @@
 // Copyright 2023-2026 Lawrence Livermore National Security, LLC and other ClaMS
 // Project Developers. See the top-level COPYRIGHT file for details.
 
-
 #define METALL_DISABLE_CONCURRENCY
 
 #include <unistd.h>
 #include <algorithm>
 #include <cstdlib>
 #include <filesystem>
-#include <iostream>
-#include <vector>
 #include <fstream>
+#include <iostream>
 #include <string>
 #include <utility>
+#include <vector>
 
-#include <metall/metall.hpp>
 #include <spdlog/spdlog.h>
+#include <metall/metall.hpp>
 
 #include "../common.hpp"
 
 using namespace clams;
 
 void parse_option(int argc, char *argv[], std::filesystem::path &pm_mst_path,
-                 std::filesystem::path &output_path) {
+                  std::filesystem::path &output_path) {
   int opt_char;
   while ((opt_char = getopt(argc, argv, "i:o:h")) != -1) {
     switch (opt_char) {
@@ -55,12 +54,11 @@ void parse_option(int argc, char *argv[], std::filesystem::path &pm_mst_path,
 }
 
 int main(int argc, char *argv[]) {
-
   std::filesystem::path pm_mst_path;
   std::filesystem::path output_path;
   parse_option(argc, argv, pm_mst_path, output_path);
 
-  metall::manager metall_manager(metall::open_read_only, pm_mst_path);
+  metall::manager   metall_manager(metall::open_read_only, pm_mst_path);
   const auto *const input_mst_edges =
       metall_manager.find<weighted_edge_list_t>(metall::unique_instance).first;
   if (!input_mst_edges) {
