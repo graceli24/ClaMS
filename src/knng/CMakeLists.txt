@@ -8,5 +8,9 @@ setup_saltatlas_target(build_knng)
 add_basic_executable(build_knng_neo build_knng_neo.cpp)
 setup_saltatlas_target(build_knng_neo)
 
+add_basic_executable(build_knng_neo_tiebreaker_dist build_knng_neo_tiebreaker_dist.cpp)
+setup_saltatlas_target(build_knng_neo_tiebreaker_dist)
+setup_ygm_target(build_knng_neo_tiebreaker_dist)
+
 add_basic_executable(serialize_pm_knng serialize_pm_knng.cpp)
 setup_saltatlas_target(serialize_pm_knng)
