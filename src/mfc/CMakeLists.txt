@@ -4,3 +4,6 @@
 
 add_basic_executable(connect_ccs_random_dist connect_ccs_random_dist.cpp)
 setup_saltatlas_target(connect_ccs_random_dist)
+
+add_basic_executable(connect_ccs_random_tiebreaker_dist connect_ccs_random_tiebreaker_dist.cpp)
+setup_saltatlas_target(connect_ccs_random_tiebreaker_dist)
