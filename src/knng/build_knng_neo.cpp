@@ -83,8 +83,8 @@ int main(int argc, char **argv) {
       comm.cout0() << "\n<<Construct DNND PM Datastore>>" << std::endl;
       ygm::comm ygm_comm(comm.comm());
 
-      ygm::utility::timer                                dnnd_knng_const_timer;
-      static std::unordered_map<id_t, std::vector<id_t>> dnnd_init_knng;
+      ygm::utility::timer                  dnnd_knng_const_timer;
+      static clams::dnnd_t::knn_index_type dnnd_init_knng;
       {
         dnnd_init_knng.reserve(neo_knng.size());
         for (const auto &pair : neo_knng) {
@@ -92,9 +92,9 @@ int main(int argc, char **argv) {
           ygm_comm.async(
               clams::dnnd_t::get_owner(src, ygm_comm.size()),
               [](auto, const id_t sid, const auto &neighbors) {
-                dnnd_init_knng[sid].reserve(neighbors.size());
+                dnnd_init_knng.reserve_neighbors(sid, neighbors.size());
                 for (const auto nb : neighbors) {
-                  dnnd_init_knng[sid].push_back(nb.id);
+                  dnnd_init_knng.insert(sid, nb);
                 }
               },
               src, pair.second);
@@ -113,7 +113,6 @@ int main(int argc, char **argv) {
                       opt.point_file_format);
         g.build(saltatlas::distance::convert_to_distance_id(opt.distance_name),
                 opt.index_k, dnnd_init_knng, opt.r, opt.delta, false, 0.1);
-        dnnd_init_knng.clear();
       }
       comm.cout0() << "\nConstructing DNND PM datastore took (s)\t"
                    << dnnd_data_const_timer.elapsed() << std::endl;

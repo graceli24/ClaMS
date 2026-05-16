@@ -1,35 +1,33 @@
 // Copyright 2023-2026 Lawrence Livermore National Security, LLC and other ClaMS
 // Project Developers. See the top-level COPYRIGHT file for details.
 
-
 #pragma once
 
-#include <iostream>
-#include <vector>
-#include <string_view>
 #include <filesystem>
+#include <iostream>
 #include <string>
+#include <string_view>
+#include <vector>
 
-#include <ygm/comm.hpp>
 #include <saltatlas/dnnd/utility.hpp>
+#include <ygm/comm.hpp>
 
 #include "../common.hpp"
 
 namespace clams {
 
 struct option_t {
-  int index_k{20};
-  double r{0.5};
-  double delta{0.001};
-  std::string distance_name;
+  int                                index_k{20};
+  double                             r{0.5};
+  double                             delta{0.001};
+  std::string                        distance_name;
   std::vector<std::filesystem::path> point_file_names;
-  std::filesystem::path scratchpath{"/dev/shm/dnnd_datastore"};
-  std::filesystem::path datastorepath{};
-  std::string point_file_format;
-  std::size_t batch_size{1ULL << 25};
-  bool verbose{false};
+  std::filesystem::path              scratchpath{"/dev/shm/dnnd_datastore"};
+  std::filesystem::path              datastorepath{};
+  std::string                        point_file_format;
+  std::size_t                        batch_size{1ULL << 25};
+  bool                               verbose{false};
 };
-
 
 inline bool parse_options(int argc, char **argv, option_t &opt, bool &help) {
   opt.distance_name.clear();
@@ -60,7 +58,7 @@ inline bool parse_options(int argc, char **argv, option_t &opt, bool &help) {
         opt.point_file_format = optarg;
         break;
 
-        case 's':
+      case 's':
         opt.scratchpath = std::filesystem::path(optarg);
         break;
 
@@ -116,9 +114,12 @@ inline void usage(std::string_view exe_name, cout_type &cout) {
   cout << "  -r <float>  NN-Descent r parameter (default: 0.5)" << std::endl;
   cout << "  -d <float>  NN-Descent delta parameter (default: 0.001)"
        << std::endl;
-  cout << "  -o <path>   If specified, copy the PM datastore from the scratchpad to to this path."
+  cout << "  -o <path>   If specified, copy the PM datastore from the "
+          "scratchpad to to this path."
        << std::endl;
-  cout << "  -s <path>   Path to datastore scratchpad. Hold a PM datastore during computation (default: /dev/shm/dnnd_datastore). Recommended to be on a fast storage, e.g., tmpfs (/dev/shm)."
+  cout << "  -s <path>   Path to datastore scratchpad. Hold a PM datastore "
+          "during computation (default: /dev/shm/dnnd_datastore). Recommended "
+          "to be on a fast storage, e.g., tmpfs (/dev/shm)."
        << std::endl;
   cout << "  -b <int>    Batch size (default: 1^25)" << std::endl;
   cout << "  -v          Verbose mode" << std::endl;
@@ -133,6 +134,7 @@ inline void show_options(const option_t &opt, cout_type &cout) {
   cout << "  delta: " << opt.delta << std::endl;
   cout << "  distance name: " << opt.distance_name << std::endl;
   cout << "  point file format: " << opt.point_file_format << std::endl;
+  cout << "  datastore scratch path: " << opt.scratchpath << std::endl;
   cout << "  datastore path: " << opt.datastorepath << std::endl;
   cout << "  batch size: " << opt.batch_size << std::endl;
   cout << "  verbose: " << opt.verbose << std::endl;
