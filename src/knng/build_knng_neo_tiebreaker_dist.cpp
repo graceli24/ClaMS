@@ -86,8 +86,13 @@ auto build_knng(const clams::option_t                    &opt,
         // Add some small perturbation from hash function on the point ids to
         // as a tiebreaker to the distance
         std::size_t hash_value = 0;
-        boost::hash_combine(hash_value, p0.front());
-        boost::hash_combine(hash_value, p1.front());
+        if (p0.front() < p1.front()) {
+          boost::hash_combine(hash_value, p0.front());
+          boost::hash_combine(hash_value, p1.front());
+        } else {
+          boost::hash_combine(hash_value, p1.front());
+          boost::hash_combine(hash_value, p0.front());
+        }
         d += static_cast<dist_t>(hash_value) /
              static_cast<dist_t>(std::numeric_limits<size_t>::max());
 
@@ -105,6 +110,7 @@ auto build_knng(const clams::option_t                    &opt,
   {
     std::pair<std::vector<id_t>, std::vector<neo_dnnd_t::point_type>>
         read_data = read_points_neo_dnnd(comm, paths);
+    std::cout << "done getting points" << std::endl;
     dnnd.add_points(read_data.first.begin(), read_data.first.end(),
                     read_data.second.begin(), read_data.second.end());
     comm.barrier();
@@ -112,7 +118,9 @@ auto build_knng(const clams::option_t                    &opt,
   // dnnd.load_points(paths.begin(), paths.end(), opt.point_file_format);
 
   comm.cout0() << "\n<<kNNG Construction>>" << std::endl;
-  auto knng = dnnd.build(opt.index_k, opt.r, opt.delta, 0.2, opt.batch_size);
+  // 0.2 is fraction of feature vectors to duplicate
+  // auto knng = dnnd.build(opt.index_k, opt.r, opt.delta, 0.2, opt.batch_size);
+  auto knng = dnnd.build(opt.index_k, opt.r, opt.delta, 0, opt.batch_size);
   return knng;
 }
 
@@ -238,8 +246,13 @@ int main(int argc, char **argv) {
                 // Add some small perturbation from hash function on the
                 // point ids to as a tiebreaker to the distance
                 std::size_t hash_value = 0;
-                boost::hash_combine(hash_value, p0.at(0));
-                boost::hash_combine(hash_value, p1.at(0));
+                if (p0.at(0) < p1.at(0)) {
+                  boost::hash_combine(hash_value, p0.at(0));
+                  boost::hash_combine(hash_value, p1.at(1));
+                } else {
+                  boost::hash_combine(hash_value, p1.at(1));
+                  boost::hash_combine(hash_value, p0.at(0));
+                }
                 d += static_cast<dist_t>(hash_value) /
                      static_cast<dist_t>(std::numeric_limits<size_t>::max());
 

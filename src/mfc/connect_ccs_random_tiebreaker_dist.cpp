@@ -158,8 +158,13 @@ int main(int argc, char **argv) {
           // Add some small perturbation from hash function on the
           // point ids to as a tiebreaker to the distance
           std::size_t hash_value = 0;
-          boost::hash_combine(hash_value, p0.at(0));
-          boost::hash_combine(hash_value, p1.at(0));
+          if (p0.at(0) < p1.at(0)) {
+            boost::hash_combine(hash_value, p0.at(0));
+            boost::hash_combine(hash_value, p1.at(1));
+          } else {
+            boost::hash_combine(hash_value, p1.at(1));
+            boost::hash_combine(hash_value, p0.at(0));
+          }
           d += static_cast<cls::distance_t>(hash_value) /
                static_cast<cls::distance_t>(std::numeric_limits<size_t>::max());
 
@@ -195,7 +200,7 @@ int main(int argc, char **argv) {
     comm.barrier();
     comm.cout0() << "Connected CCs took (s): " << connect_timer.elapsed()
                  << std::endl;
-    comm.cout0() << "Entier algorithm took (s): " << root_timer.elapsed()
+    comm.cout0() << "Entire algorithm took (s): " << root_timer.elapsed()
                  << std::endl;
 
     if (!bridge_edge_dump_file.empty()) {
