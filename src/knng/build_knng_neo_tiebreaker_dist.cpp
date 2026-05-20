@@ -110,7 +110,6 @@ auto build_knng(const clams::option_t                    &opt,
   {
     std::pair<std::vector<id_t>, std::vector<neo_dnnd_t::point_type>>
         read_data = read_points_neo_dnnd(comm, paths);
-    std::cout << "done getting points" << std::endl;
     dnnd.add_points(read_data.first.begin(), read_data.first.end(),
                     read_data.second.begin(), read_data.second.end());
     comm.barrier();
