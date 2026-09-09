@@ -10,23 +10,34 @@ import os
 
 # Modified from:
 # https://gist.github.com/lmcinnes/24ed5c22c80125be5133811d677eae7b
-def eval_clusters(cluster_labels, true_labels, singleton_cluster_to_noise_points=False):
+def eval_clusters(cluster_labels, true_labels, singleton_cluster_to_noise_points=False, ignore_true_noise_points=False):
+    print(f"Assigning singleton clusters to noise points: {singleton_cluster_to_noise_points}")
+    print(f"Ignore true noise points in the ground truth: {ignore_true_noise_points}")
     max_cluster_id = max(np.max(cluster_labels), np.max(true_labels))
 
     if np.any(true_labels < 0):
         print("Ground truth labels contain noise points")
         pct_clustered_gt = (np.sum(true_labels >= 0) / cluster_labels.shape[0])
-        print(f"GT clustered Points: {pct_clustered_gt * 100:.2f}%")
-        print(
-            "Assigning a singleton cluster to each noise point in the ground truth labels")
-        true_labels = assign_singleton_cluster_to_noise_points(true_labels, max_cluster_id)
-        max_cluster_id = max(max_cluster_id, np.max(true_labels))
+        print(f"Ground truth cluster coverage (%): {pct_clustered_gt * 100:.2f}%")
 
-    if np.any(cluster_labels < 0):  # Has noise points
-        clustered_points = (cluster_labels >= 0)
-        pct_clustered = (np.sum(clustered_points) / cluster_labels.shape[0])
-        print(f"Cluster coverage (%): {pct_clustered * 100:.2f}")
+        if ignore_true_noise_points:
+            print("Remove noise points in the ground truth from the evaluation")
+            print(f"Before filtering: {len(true_labels)} ground truth points")
+            mask = true_labels >= 0
+            true_labels = true_labels[mask]
+            cluster_labels = cluster_labels[mask]
+            max_cluster_id = max(np.max(cluster_labels), np.max(true_labels))
+            print(f"After filtering: {len(true_labels)} ground truth points")
 
+    non_noise_points_mask = (cluster_labels >= 0)
+    num_non_noise_points = np.sum(non_noise_points_mask)
+    pct_clustered = (num_non_noise_points / cluster_labels.shape[0])
+    print(f"Cluster coverage (%): {pct_clustered * 100:.2f}%")
+
+    # Make sure always num_non_noise_points <= cluster_labels.shape[0]
+    assert num_non_noise_points <= cluster_labels.shape[0]
+
+    if num_non_noise_points != cluster_labels.shape[0]:  # Has noise points
         if singleton_cluster_to_noise_points:
             print(
                 "Assigning a singleton cluster to each noise point in the clustering result")
@@ -34,16 +45,17 @@ def eval_clusters(cluster_labels, true_labels, singleton_cluster_to_noise_points
             ari = adjusted_rand_score(true_labels, cluster_labels)
             ami = adjusted_mutual_info_score(true_labels, cluster_labels)
         else:
-            ari = adjusted_rand_score(true_labels[clustered_points],
-                                    cluster_labels[clustered_points])
-            ami = adjusted_mutual_info_score(true_labels[clustered_points],
-                                            cluster_labels[clustered_points])
-            # sil = silhouette_score(raw_data[clustered_points], cluster_labels[clustered_points])
+            print("Noise points are ignored in the evaluation")
+            ari = adjusted_rand_score(true_labels[non_noise_points_mask],
+                                    cluster_labels[non_noise_points_mask])
+            ami = adjusted_mutual_info_score(true_labels[non_noise_points_mask],
+                                            cluster_labels[non_noise_points_mask])
+            # sil = silhouette_score(raw_data[non_noise_points_mask], cluster_labels[non_noise_points_mask])
     else:
+        print(f"No noise points in the clustering result")
         ari = adjusted_rand_score(true_labels, cluster_labels)
         ami = adjusted_mutual_info_score(true_labels, cluster_labels)
         # sil = silhouette_score(raw_data, cluster_labels)
-        print(f"No noise points in the clustering result")
 
     print(f"ARI: {ari:.4f}")
     print(f"AMI: {ami:.4f}")
@@ -58,6 +70,9 @@ def assign_singleton_cluster_to_noise_points(cluster_labels, noise_id_offset):
         if label == -1:
             cnt_noise += 1
             new_labels[i] = cnt_noise + noise_id_offset
+            new_labels[i] = cnt_noise + noise_id_offset
+
+    print(f"Assigned singleton clusters to {cnt_noise} noise points")
 
     return new_labels
 
@@ -88,7 +103,7 @@ def find_files_in_dir(dir_path, ext=''):
 # If the first column is not a point ID, set has_ids to False.
 # If there are multiple files in a directory, the point IDs must be present.
 def read_point_data(data_path, has_ids=True):
-    print(f"Loading data from {data_path}")
+    print(f"Loading data from {data_path}", flush=True)
     files = find_files_in_dir(data_path)
 
     if len(files) == 0:
@@ -126,7 +141,7 @@ def read_point_data(data_path, has_ids=True):
 
             points_table[pid] = list(map(float, items))
 
-    print(f"Loaded {len(points_table)} items from {len(files)} files")
+    print(f"Loaded {len(points_table)} items from {len(files)} files", flush=True)
 
     # numpy array of feature vectors
     # if the IDs are not continuous, fill the missing IDs with -1
@@ -156,7 +171,7 @@ def read_point_data(data_path, has_ids=True):
 #
 # Both File types can also contain comment lines, which must start from #.
 def read_label_data(data_path):
-    print(f"Loading data from {data_path}")
+    print(f"Loading data from {data_path}", flush=True)
     labels_dict = {}
     files = []
     if os.path.isdir(data_path):
@@ -175,9 +190,9 @@ def read_label_data(data_path):
             break
 
     if contains_ids:
-        print("Loading point IDs and labels")
+        print("Loading point IDs and labels", flush=True)
     else:
-        print("Loading only labels")
+        print("Loading only labels", flush=True)
 
     if len(files) > 1 and not contains_ids:
         print("Multiple files are provided,"
@@ -209,8 +224,8 @@ def read_label_data(data_path):
                 exit(1)
             labels_dict[pid] = label
 
-    print(f"Loaded {len(labels_dict)} items from {len(files)} files")
-    print(f"Max ID: {max_id}")
+    print(f"Loaded {len(labels_dict)} items from {len(files)} files", flush=True)
+    print(f"Max ID: {max_id}", flush=True)
 
     # numpy array of labels
     # if the IDs are not continuous, fill the missing IDs with -1
