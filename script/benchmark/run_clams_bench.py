@@ -300,14 +300,19 @@ def gen_clams_bench_script(job_name, job_dir, work_dir,
             dnnd_ds_path = f"{work_dir}/dnnd_pm_datastore"
             dnnd_batch_size = 2 ** 25
             verbose_flag = '-v' if verbose else ''
-            dnnd_command = f"{dnnd_exe} {verbose_flag} -k {nng_k} -r {nng_r} -d {nng_delta} -f {distance_func} -o {dnnd_ds_path} -b {dnnd_batch_size} -p {points_file_format} {point_path}"
-            add_srun_cmd(num_tasks_per_node, dnnd_command, job_script)
-            finish_stage(job_script)
+            dnnd_command = f"{dnnd_exe} {verbose_flag} -k {nng_k} -r {nng_r} -d {nng_delta} -f {distance_func} -o {dnnd_ds_path} -b {dnnd_batch_size} -p {points_file_format}"
             if backup_knng:
                 dnnd_ds_path_backup = f"{dnnd_ds_path}_backup"
-                job_script.write(f"echo \"Backing up KNNG datastore\"\n")
-                backup_knng_command = f"cp -r {dnnd_ds_path} {dnnd_ds_path_backup}"
-                add_cmd(backup_knng_command, job_script)
+                job_script.write(f"echo \"Backing up KNNG datastore to {dnnd_ds_path}\"\n")
+                dnnd_command = f"{dnnd_command} -B {dnnd_ds_path_backup}"
+            dnnd_command = f"{dnnd_command} {point_path}"
+            add_srun_cmd(num_tasks_per_node, dnnd_command, job_script)
+            finish_stage(job_script)
+            # if backup_knng:
+            #     dnnd_ds_path_backup = f"{dnnd_ds_path}_backup"
+            #     job_script.write(f"echo \"Backing up KNNG datastore\"\n")
+            #     backup_knng_command = f"cp -r {dnnd_ds_path} {dnnd_ds_path_backup}"
+            #     add_cmd(backup_knng_command, job_script)
         else:
             job_script.write(
                 f"Using existing DNND datastore at {input_dnnd_ds_path}\n")
