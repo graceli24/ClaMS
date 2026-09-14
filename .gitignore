@@ -3,6 +3,7 @@ CMakeFiles
 cmake_install.cmake
 .swp
 build*/
+build_mammoth*/
 .cobaltlog
 .error
 .autosave

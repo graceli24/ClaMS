@@ -143,9 +143,9 @@ def parse_options():
 
     # Default directories and executables if none provided
     if options.dnnd_exe is None:
-        options.dnnd_exe = f'{options.build_dir}/custom_distance_example/build_knng_neo_anarci_dist'
+        options.dnnd_exe = f'{options.build_dir}/antibody_distance_example/build_knng_neo_anarci_dist'
     if options.mfc_exe is None:
-        options.mfc_exe = f'{options.build_dir}/custom_distance_example/connect_mfc_anarci_dist'
+        options.mfc_exe = f'{options.build_dir}/antibody_distance_example/connect_mfc_anarci_dist'
     if options.amst_exe is None:
         options.amst_exe = f'{options.build_dir}/src/mst/build_amst'
     if options.clustering_exe is None:
@@ -159,7 +159,7 @@ def parse_options():
         else:
             options.evaluator_exe = f'{options.build_dir}/../script/benchmark/evaluate_clustering_quality.py'
     if options.substitution_matrix is None:
-        options.substitution_matrix = f'{options.build_dir}/../custom_distance_example/BLOSUM62.txt'
+        options.substitution_matrix = f'{options.build_dir}/../antibody_distance_example/BLOSUM62.txt'
 
     return options
 
