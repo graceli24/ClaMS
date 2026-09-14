@@ -116,6 +116,22 @@ int main(int argc, char** argv) {
         MPI_Abort(MPI_COMM_WORLD, 1);
       }
       comm.cout0() << "Copy took (s): " << copy_timer.elapsed() << std::endl;
+
+      if (opt.datastorepath != opt.backup_datastorepath &&
+          !opt.backup_datastorepath.empty()) {
+        comm.cout0() << "Making a backup of DNND PM datastore at "
+                     << opt.backup_datastorepath << std::endl;
+        metall::logger::set_log_level(metall::logger::level_filter::critical);
+        ygm::utility::timer backup_timer;
+        const auto          backup_ret = dist_pm_knng_t::copy(
+            opt.scratchpath, opt.backup_datastorepath, comm.get_mpi_comm());
+        if (!backup_ret) {
+          comm.cerr0() << "Failed to copy DNND PM datastore" << std::endl;
+          MPI_Abort(MPI_COMM_WORLD, 1);
+        }
+        comm.cout0() << "Backup copy took (s): " << backup_timer.elapsed()
+                     << std::endl;
+      }
     }
   }
 
