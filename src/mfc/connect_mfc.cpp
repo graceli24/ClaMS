@@ -150,12 +150,18 @@ int main(int argc, char **argv) {
         *s_bag_map;
     s_bag_map = &bag_map;
 
+    comm.cout0() << "Debug: bag definitions done" << std::endl;  // debug
+    std::cout.flush();
+
     bags.reserve(rep_set.size());
     for (auto &rep : rep_set) {
       bags.emplace_back(
           new ygm::container::bag<std::pair<cls::id_t, cls::point_t>>(comm));
       bag_map.emplace(rep, bags.back());
     }
+
+    comm.cout0() << "Debug: created bag of bags" << std::endl;  // debug
+    std::cout.flush();
 
     disjoint_set.for_all([&](const auto &p, const auto &rep) {
       comm.async(
@@ -170,8 +176,11 @@ int main(int argc, char **argv) {
           },
           p, rep);
     });
-
     comm.barrier();
+
+    comm.cout0() << "Debug: assign points to correct bags"
+                 << std::endl;  // debug
+    std::cout.flush();
 
     for (auto &b : bags) {
       if (b->size() > (size_t)comm.size()) b->rebalance();
