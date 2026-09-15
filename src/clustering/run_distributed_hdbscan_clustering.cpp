@@ -1192,7 +1192,6 @@ int main(int argc, char *argv[]) {
     std::filesystem::path label_file_path =
         opt.cluster_ids_out_path / label_file_name;
     std::ofstream label_ofs;
-    int           opened_file = 1;
 
     for (int attempt = 1; attempt <= 5; ++attempt) {
       label_ofs.open(label_file_path, std::ios::out | std::ios::trunc);
@@ -1204,7 +1203,6 @@ int main(int argc, char *argv[]) {
 
     if (!label_ofs.is_open()) {
       spdlog::warn("Unable to open label file: {}", label_file_path.string());
-      opened_file = 0;
     }
 
     label_ofs << "point_id\tcluster_id\n";
@@ -1229,7 +1227,6 @@ int main(int argc, char *argv[]) {
                    num_files, opt.cluster_data_out_path.string());
     }
     std::filesystem::create_directories(opt.cluster_data_out_path);
-    world.barrier();
 
     // Output cluster information
     std::string cluster_file_name = std::to_string(world.rank()) + ".csv";
@@ -1250,14 +1247,18 @@ int main(int argc, char *argv[]) {
                                        root_chain_cluster_map, chain_map,
                                        leaf_cluster_map, root_chain_supernode);
 
+      // id_t num_valid_clusters = valid_cluster_map.size();
       if (world.rank() == 0 && opt.verbose) {
         spdlog::info("  Time to filter and keep valid clusters only(s): {:.3f}",
                      sw_step);
+        // spdlog::info("  Number of valid cluster extracted {}",
+        //              num_valid_clusters);
       }
       sw_step.reset();
 
       get_valid_cluster_parent_child_relations(
           valid_cluster_map, chain_map, leaf_cluster_map, root_chain_supernode);
+      world.barrier();
 
       if (world.rank() == 0 && opt.verbose) {
         spdlog::info(
@@ -1268,7 +1269,9 @@ int main(int argc, char *argv[]) {
       sw_step.reset();
 
       write_valid_clusters_to_file(cluster_file_path, valid_cluster_map);
+      world.barrier();
     }
+    world.barrier();
 
     if (world.rank() == 0) {
       spdlog::info("  Time to write cluster info (s): {:.3f}", sw_step);

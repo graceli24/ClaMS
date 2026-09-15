@@ -2428,7 +2428,19 @@ void write_valid_clusters_to_file(
   ygm::comm &comm = valid_cluster_map.comm();
 
   // Create output file stream
-  std::ofstream ofs(cluster_file_path);
+  std::ofstream ofs;
+
+  for (int attempt = 1; attempt <= 5; ++attempt) {
+    ofs.open(cluster_file_path, std::ios::out | std::ios::trunc);
+    if (ofs.is_open()) {
+      break;
+    }
+    ofs.clear();
+  }
+
+  if (!ofs.is_open()) {
+    std::cout << "Unable to open label file: " << cluster_file_path.string();
+  }
 
   // Write header
   ofs << "cluster_name,size,stability,stability_traversing_up,"
@@ -2452,7 +2464,8 @@ void write_valid_clusters_to_file(
        << "," << cluster_info.num_points_added;
     ofs << ss.str() << "\n";
   }
-  comm.barrier();
+  ofs.flush();
+  ofs.close();
 }
 
 }  // namespace clams::clustering
