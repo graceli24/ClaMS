@@ -563,7 +563,7 @@ int main(int argc, char *argv[]) {
 
     // Assign edges to chains
     {
-      if (world.rank() == 0 && opt.verbose) {
+      if ((world.rank() == 0) && opt.verbose) {
         spdlog::info(" Assigning edges to chains");
       }
 
@@ -805,10 +805,6 @@ int main(int argc, char *argv[]) {
 
   // Initialize map of point id -> cluster id
   ygm::container::map<id_t, cluster_id_t> point_to_cluster_id_map(world);
-
-  // YGM map to collect info on valid clusters to write to file
-  ygm::container::map<cluster_name_t, full_valid_cluster_info>
-      valid_cluster_map(world);
 
   {
     // Set up variables used through out Phase 3
@@ -1088,15 +1084,9 @@ int main(int argc, char *argv[]) {
     {
       sw_step.reset();
 
-      // Traverse down the child chains for cluster selection from all root
-      // chain clusters above the selected one (if there is one)
-      local_selected_clusters = traverse_down_hierarchy_and_select_clusters(
-          root_chain_cluster_map, chain_map, leaf_cluster_map,
-          root_chain_second_child, min_cluster_size, root_chain_supernode,
-          selected_root_chain_cluster_edge_id);
-
       // If we selected a root chain cluster as a flat cluster, set it as
-      // selected and add it to local selected clusters on rank 0
+      // selected and add it to local selected clusters on rank 0. This is the
+      // first cluster selected, so it will have cluster id 0.
       if (world.rank() == 0 && selected_root_chain_cluster_edge_id > 0) {
         cluster_name_t cluster_name = std::make_pair(
             root_chain_supernode, selected_root_chain_cluster_edge_id);
@@ -1109,6 +1099,14 @@ int main(int argc, char *argv[]) {
             });
       }
       world.barrier();
+
+      // Traverse down the child chains for cluster selection from all root
+      // chain clusters above the selected one (if there is one)
+      local_selected_clusters = traverse_down_hierarchy_and_select_clusters(
+          root_chain_cluster_map, chain_map, leaf_cluster_map,
+          root_chain_second_child, min_cluster_size, root_chain_supernode,
+          selected_root_chain_cluster_edge_id);
+
       select_clusters_time += sw_step.elapsed().count();
 
       id_t num_clusters       = local_selected_clusters.size();
@@ -1184,23 +1182,15 @@ int main(int argc, char *argv[]) {
     if (world.rank() == 0) {
       spdlog::info("Writing {} files containing cluster labels to: {}",
                    num_files, opt.cluster_ids_out_path.string());
+      std::filesystem::create_directories(opt.cluster_ids_out_path);
     }
-    std::filesystem::create_directories(opt.cluster_ids_out_path);
+    world.barrier();
 
     // Output points and cluster labels
     std::string label_file_name = std::to_string(world.rank()) + ".txt";
     std::filesystem::path label_file_path =
         opt.cluster_ids_out_path / label_file_name;
-    std::ofstream label_ofs;
-
-    for (int attempt = 1; attempt <= 5; ++attempt) {
-      label_ofs.open(label_file_path, std::ios::out | std::ios::trunc);
-      if (label_ofs.is_open()) {
-        break;
-      }
-      label_ofs.clear();
-    }
-
+    std::ofstream label_ofs(label_file_path);
     if (!label_ofs.is_open()) {
       spdlog::warn("Unable to open label file: {}", label_file_path.string());
     }
@@ -1225,8 +1215,9 @@ int main(int argc, char *argv[]) {
     if (world.rank() == 0) {
       spdlog::info("Writing {} files containing full cluster data to: {}",
                    num_files, opt.cluster_data_out_path.string());
+      std::filesystem::create_directories(opt.cluster_data_out_path);
     }
-    std::filesystem::create_directories(opt.cluster_data_out_path);
+    world.barrier();
 
     // Output cluster information
     std::string cluster_file_name = std::to_string(world.rank()) + ".csv";
@@ -1239,20 +1230,20 @@ int main(int argc, char *argv[]) {
           root_chain_second_child, root_chain_cluster_map, chain_map,
           leaf_cluster_map);
     } else {
-      // // YGM map to collect info on valid clusters to write to file
-      // ygm::container::map<cluster_name_t, full_valid_cluster_info>
-      //     valid_cluster_map(world);
+      // YGM map to collect info on valid clusters to write to file
+      ygm::container::map<cluster_name_t, full_valid_cluster_info>
+          valid_cluster_map(world);
 
       get_and_keep_valid_clusters_only(valid_cluster_map,
                                        root_chain_cluster_map, chain_map,
                                        leaf_cluster_map, root_chain_supernode);
 
-      // id_t num_valid_clusters = valid_cluster_map.size();
+      id_t num_valid_clusters = valid_cluster_map.size();
       if (world.rank() == 0 && opt.verbose) {
         spdlog::info("  Time to filter and keep valid clusters only(s): {:.3f}",
                      sw_step);
-        // spdlog::info("  Number of valid cluster extracted {}",
-        //              num_valid_clusters);
+        spdlog::info("  Number of valid cluster extracted {}",
+                     num_valid_clusters);
       }
       sw_step.reset();
 
@@ -1271,7 +1262,6 @@ int main(int argc, char *argv[]) {
       write_valid_clusters_to_file(cluster_file_path, valid_cluster_map);
       world.barrier();
     }
-    world.barrier();
 
     if (world.rank() == 0) {
       spdlog::info("  Time to write cluster info (s): {:.3f}", sw_step);
