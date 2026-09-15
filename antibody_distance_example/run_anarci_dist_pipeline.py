@@ -249,15 +249,19 @@ def gen_anarci_dist_bench_script(job_name, job_dir, work_dir,
                 dont_use_ends_flag = '-x' if dont_include_ends else ''
                 hamming_dist_flag = '-H' if use_hamming_dist else ''
                 dnnd_command = f"{dnnd_command} {dont_use_ends_flag} {hamming_dist_flag}"
-            dnnd_command = f"{dnnd_command} {point_path}"
-            add_srun_cmd(num_tasks_per_node, dnnd_command, job_script)
             if backup_knng:
                 dnnd_ds_path_backup = f"{dnnd_ds_path}_backup"
-                job_script.write(f"echo\n")
-                job_script.write("date\n")
-                job_script.write(f"echo \"Backing up KNNG datastore\"\n")
-                backup_knng_command = f"cp -r {dnnd_ds_path} {dnnd_ds_path_backup}"
-                add_cmd(backup_knng_command, job_script)
+                job_script.write(f"echo \"Backing up KNNG datastore to {dnnd_ds_path_backup}\"\n")
+                dnnd_command = f"{dnnd_command} -B {dnnd_ds_path_backup}"
+            dnnd_command = f"{dnnd_command} {point_path}"
+            add_srun_cmd(num_tasks_per_node, dnnd_command, job_script)
+            # if backup_knng:
+            #     dnnd_ds_path_backup = f"{dnnd_ds_path}_backup"
+            #     job_script.write(f"echo\n")
+            #     job_script.write("date\n")
+            #     job_script.write(f"echo \"Backing up KNNG datastore\"\n")
+            #     backup_knng_command = f"cp -r {dnnd_ds_path} {dnnd_ds_path_backup}"
+            #     add_cmd(backup_knng_command, job_script)
         else:
             job_script.write(
                 f"Using existing DNND datastore at {input_dnnd_ds_path}\n")

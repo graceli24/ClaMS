@@ -29,9 +29,10 @@ struct option_t {
   double                             r              = 0.5;
   double                             replicate_rate = 0.0;
   double                             delta          = 0.0001;
-  std::vector<std::filesystem::path> point_file_names;
+  std::vector<std::filesystem::path> point_file_names{};
   std::filesystem::path              scratchpath = "/dev/shm/dnnd_datastore";
-  std::filesystem::path              datastorepath;
+  std::filesystem::path              datastorepath{};
+  std::filesystem::path              backup_datastorepath{};
   std::size_t                        batch_size  = 1ULL << 23;
   int                                num_threads = -1;
   bool                               verbose     = false;
@@ -53,7 +54,7 @@ inline bool parse_options(int argc, char **argv, option_t &opt, bool &help) {
   help                               = false;
 
   int n;
-  while ((n = ::getopt(argc, argv, "k:r:R:d:f:s:o:b:T:p:M:a:xHvh")) != -1) {
+  while ((n = ::getopt(argc, argv, "k:r:R:d:f:s:o:B:b:T:p:M:a:xHvh")) != -1) {
     switch (n) {
       case 'k':
         opt.index_k = std::stoi(optarg);
@@ -81,6 +82,10 @@ inline bool parse_options(int argc, char **argv, option_t &opt, bool &help) {
 
       case 'o':
         opt.datastorepath = std::filesystem::path(optarg);
+        break;
+
+      case 'B':
+        opt.backup_datastorepath = std::filesystem::path(optarg);
         break;
 
       case 'b':
@@ -174,6 +179,10 @@ inline void usage(std::string_view exe_name, cout_type &cout) {
   cout << "  -o <path>   If specified, copy the PM datastore from the "
           "scratchpad to to this path."
        << std::endl;
+  cout << "  -B <path>   If specified and -o is also specified, then copy the "
+          "PM datastore from the scratchpad to to this path to create an "
+          "additional backup of the kNNG."
+       << std::endl;
   cout << "  -s <path>   Path to datastore scratchpad. Hold a PM datastore "
           "during computation (default: /dev/shm/dnnd_datastore). Recommended "
           "to be on a fast storage, e.g., tmpfs (/dev/shm)."
@@ -216,6 +225,7 @@ inline void show_options(const option_t &opt, cout_type &cout) {
   cout << "  delta: " << opt.delta << std::endl;
   cout << "  datastore scratch path: " << opt.scratchpath << std::endl;
   cout << "  datastore path: " << opt.datastorepath << std::endl;
+  cout << "  backup datastore path: " << opt.backup_datastorepath << std::endl;
   cout << "  batch size: " << opt.batch_size << std::endl;
   cout << "  verbose: " << opt.verbose << std::endl;
 }
@@ -458,6 +468,22 @@ int main(int argc, char **argv) {
         comm.abort();
       }
       comm.cout0() << "Copy took (s): " << copy_timer.elapsed() << std::endl;
+
+      if (opt.datastorepath != opt.backup_datastorepath &&
+          !opt.backup_datastorepath.empty()) {
+        comm.cout0() << "Making a backup of DNND PM datastore at "
+                     << opt.backup_datastorepath << std::endl;
+        metall::logger::set_log_level(metall::logger::level_filter::critical);
+        ygm::utility::timer backup_timer;
+        const auto          backup_ret = clams::dist_pm_knng_t::copy(
+            opt.scratchpath, opt.backup_datastorepath, comm.comm());
+        if (!backup_ret) {
+          comm.cerr0() << "Failed to copy PM datastore" << std::endl;
+          MPI_Abort(MPI_COMM_WORLD, 1);
+        }
+        comm.cout0() << "Backup copy took (s): " << backup_timer.elapsed()
+                     << std::endl;
+      }
     }
     comm.barrier();
   }

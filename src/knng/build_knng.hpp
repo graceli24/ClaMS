@@ -137,6 +137,9 @@ inline void usage(std::string_view exe_name, cout_type &cout) {
   cout << "  -o <path>   If specified, copy the PM datastore from the "
           "scratchpad to to this path."
        << std::endl;
+  cout << "  -B <path>   If specified, and -o is also specified, copy the PM "
+          "datastore from the scratchpad to to this path as a backup copy."
+       << std::endl;
   cout << "  -s <path>   Path to datastore scratchpad. Hold a PM datastore "
           "during computation (default: /dev/shm/dnnd_datastore). Recommended "
           "to be on a fast storage, e.g., tmpfs (/dev/shm)."

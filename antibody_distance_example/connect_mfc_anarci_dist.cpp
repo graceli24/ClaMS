@@ -245,6 +245,10 @@ int main(int argc, char **argv) {
 
     comm.barrier();
 
+    comm.cout0() << "Debug: assign points to correct bags"
+                 << std::endl;  // debug
+    std::cout.flush();
+
     for (auto &b : bags) {
       if (b->size() > (size_t)comm.size()) b->rebalance();
     }
