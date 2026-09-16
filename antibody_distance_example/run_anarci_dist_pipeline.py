@@ -168,6 +168,19 @@ def generate_job_name():
     time.sleep(2)
     return f"job_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
+stage_name_stack = []  # Stack to store stage names for logging
+def echo_stage_name(job_script, stage_name):
+    job_script.write("echo\n")
+    job_script.write(f"echo ================================\n")
+    job_script.write(f"echo \"{stage_name}\": $(date \"+%Y/%m/%d %H:%M:%S\")\n")
+    job_script.write(f"echo ================================\n")
+    stage_name_stack.append(stage_name)  # Add the stage name to the queue
+
+def finish_stage(job_script):
+    if stage_name_stack:
+        stage_name = stage_name_stack.pop()  # Get the last stage name from the stack
+        job_script.write(f"echo \"Finished {stage_name}: $(date \"+%Y/%m/%d %H:%M:%S\")\"\n")
+        job_script.write("echo\n")
 
 def add_clustering_evaluation(job_script, cluster_label_file, amst_ds_path,
                               ground_truth_path, evaluator,
@@ -229,16 +242,15 @@ def gen_anarci_dist_bench_script(job_name, job_dir, work_dir,
 
         # Set up the batch script header
         set_up_batch_header(job_script, job_name, job_dir, num_nodes)
+        job_script.write(f"echo \"Compute nodes: {num_nodes}\"\n")
+        job_script.write(f"echo \"Tasks per node: {num_tasks_per_node}\"\n")
 
         add_cmd(f'mkdir -p {work_dir}', job_script, True, False)
 
         # Run the DNND step
-        job_script.write("echo\n")
-        job_script.write("date\n")
+        job_script.write(f"echo \"kNNG k: {nng_k}\"\n")
         if len(input_dnnd_ds_path) == 0:
-            job_script.write(f"echo ================================\n")
-            job_script.write(f"echo \"Building KNNG\"\n")
-            job_script.write(f"echo ================================\n")
+            echo_stage_name(job_script, "Building KNNG")
             dnnd_ds_path = f"{work_dir}/knng_pm_datastore"
             dnnd_batch_size = 2 ** 25
             verbose_flag = '-v' if verbose else ''
@@ -262,17 +274,14 @@ def gen_anarci_dist_bench_script(job_name, job_dir, work_dir,
             #     job_script.write(f"echo \"Backing up KNNG datastore\"\n")
             #     backup_knng_command = f"cp -r {dnnd_ds_path} {dnnd_ds_path_backup}"
             #     add_cmd(backup_knng_command, job_script)
+            finish_stage(job_script)
         else:
             job_script.write(
                 f"Using existing DNND datastore at {input_dnnd_ds_path}\n")
             dnnd_ds_path = input_dnnd_ds_path
 
         # Connect the CCs
-        job_script.write("echo\n")
-        job_script.write("date\n")
-        job_script.write(f"echo ================================\n")
-        job_script.write(f"echo \"Running MFC\"\n")
-        job_script.write(f"echo ================================\n")
+        echo_stage_name(job_script, "Connecting the CCs using MFC")
         mfc_command = f"{mfc_exe} -d {dnnd_ds_path} -f {distance_name}"
         if distance_name == "substitution":
             mfc_command = f"{mfc_command} -a {inverse_power} -M {substitution_matrix}"
@@ -281,32 +290,24 @@ def gen_anarci_dist_bench_script(job_name, job_dir, work_dir,
             hamming_dist_flag = '-H' if use_hamming_dist else ''
             mfc_command = f"{mfc_command} {dont_use_ends_flag} {hamming_dist_flag}"
         add_srun_cmd(num_tasks_per_node, mfc_command, job_script)
+        finish_stage(job_script)
 
         try_no = 0
         for amst_approx_bound in amst_approx_bound_list:
             # Run the AMST step
-            job_script.write("echo\n")
-            job_script.write("date\n")
-            job_script.write(f"echo ================================\n")
-            job_script.write(f"echo \"Running AMST, approx bound = {amst_approx_bound}\"\n")
-            job_script.write(f"echo ================================\n")
+            echo_stage_name(job_script, f"Running AMST, approx bound = {amst_approx_bound}")
             amst_ds_path = f"{work_dir}/amst_pm_datastore_a{amst_approx_bound}"
             amst_command = f"{amst_exe} -d {dnnd_ds_path} -p {amst_ds_path} -e {amst_approx_bound}"
             add_srun_cmd(num_tasks_per_node, amst_command, job_script)
+            finish_stage(job_script)
 
             # Run the HPC Clustering step
             for set_cmd in min_cluster_size_set_cmnds:
                 # Set the min cluster size environment variable for this run
                 add_cmd(set_cmd, job_script, False, False)
 
-                job_script.write("echo\n")
-                job_script.write("date\n")
-                job_script.write(f"echo ================================\n")
-                job_script.write(f"echo \"Running CLAMS-HDBSCAN, min cluster size = ${{MIN_CLUSTER_SIZE}}\"\n")
-                job_script.write(f"echo ================================\n")
-
-                job_script.write(
-                    f"echo \"Min cluster size ${{MIN_CLUSTER_SIZE}}\"\n")
+                echo_stage_name(job_script, "Running CLAMS-HDBSCAN")
+                job_script.write(f"echo \"Min cluster size ${{MIN_CLUSTER_SIZE}}\"\n")
                 if distributed_hdbscan:
                     cluster_label_file = f"{work_dir}/cluster_labels_a{amst_approx_bound}_m${{MIN_CLUSTER_SIZE}}/"
                     cluster_tree_file = f"{work_dir}/cluster_tree_a{amst_approx_bound}_m${{MIN_CLUSTER_SIZE}}/"
@@ -325,6 +326,7 @@ def gen_anarci_dist_bench_script(job_name, job_dir, work_dir,
                                             f" -c {cluster_tree_file} "
                                             f" -P ")
                     add_cmd(hpc_clustering_command, job_script)
+                finish_stage(job_script)
 
                 # Run the evaluation step
                 if ground_truth_path is not None and ground_truth_path != '':
