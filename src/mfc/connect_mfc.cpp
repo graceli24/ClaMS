@@ -122,6 +122,9 @@ int main(int argc, char **argv) {
     comm.barrier();
 
     disjoint_set.all_compress();
+    comm.cout0() << "Debug: disjoint_set.num_sets() = "
+                 << disjoint_set.num_sets() << std::endl;
+    std::cout.flush();
 
     std::set<cls::id_t> rep_set;
     disjoint_set.for_all(
@@ -137,6 +140,7 @@ int main(int argc, char **argv) {
         comm);
 
     comm.cout0() << "Found reps" << std::endl;
+    comm.cout0() << "Debug: number of reps = " << rep_set.size() << std::endl;
     std::cout.flush();
 
     std::vector<std::shared_ptr<
@@ -154,10 +158,15 @@ int main(int argc, char **argv) {
     std::cout.flush();
 
     bags.reserve(rep_set.size());
+    int i = 0;
     for (auto &rep : rep_set) {
       bags.emplace_back(
           new ygm::container::bag<std::pair<cls::id_t, cls::point_t>>(comm));
       bag_map.emplace(rep, bags.back());
+      comm.cout0() << "Debug: Bag " << i << " for rep " << rep << " created"
+                   << std::endl;
+      std::cout.flush();
+      ++i;
     }
 
     comm.cout0() << "Debug: created bag of bags" << std::endl;  // debug
