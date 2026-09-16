@@ -158,7 +158,7 @@ int main(int argc, char **argv) {
     std::cout.flush();
 
     bags.reserve(rep_set.size());
-    int i = 0;
+    int i = 0;  // debug
     for (auto &rep : rep_set) {
       bags.emplace_back(
           new ygm::container::bag<std::pair<cls::id_t, cls::point_t>>(comm));
@@ -232,7 +232,7 @@ int main(int argc, char **argv) {
     comm.barrier();
     comm.cout0() << "Connected CCs took (s): " << connect_timer.elapsed()
                  << std::endl;
-    comm.cout0() << "Entier algorithm took (s): " << root_timer.elapsed()
+    comm.cout0() << "Entire algorithm took (s): " << root_timer.elapsed()
                  << std::endl;
 
     if (!bridge_edge_dump_file.empty()) {
