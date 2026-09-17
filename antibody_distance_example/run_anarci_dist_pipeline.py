@@ -6,10 +6,14 @@ import sys
 import argparse
 import time
 from datetime import datetime
+from pathlib import Path
 
-sys.path.append("./../script/benchmark")
+# sys.path.append("./../script/benchmark")
+SCRIPT_DIR = Path(__file__).resolve().parent
+BENCHMARK_DIR = SCRIPT_DIR.parent / "script" / "benchmark"
+sys.path.insert(0, str(BENCHMARK_DIR))
+
 from bench_utilities import *
-
 
 
 def parse_options():
