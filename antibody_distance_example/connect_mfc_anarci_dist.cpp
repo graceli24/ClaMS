@@ -28,6 +28,7 @@ namespace cls = clams;
 struct option_t {
   std::filesystem::path pm_knng_datastore_path;
   std::string           bridge_edge_dump_file;
+  std::filesystem::path component_size_dump_file;
   // Distance name options are identity or substitution
   std::string              distance_name        = "identity";
   std::vector<std::string> region_names         = {"full"};
@@ -77,7 +78,7 @@ bool parse_option(int argc, char *argv[], option_t &opt) {
   opt.pm_knng_datastore_path.clear();
   std::string provided_region_option = "";
 
-  while ((n = getopt(argc, argv, "d:f:b:p:M:a:xH")) != -1) {
+  while ((n = getopt(argc, argv, "d:f:b:c:p:M:a:xH")) != -1) {
     switch (n) {
       case 'd':
         opt.pm_knng_datastore_path = std::filesystem::path(optarg);
@@ -89,6 +90,10 @@ bool parse_option(int argc, char *argv[], option_t &opt) {
 
       case 'b':
         opt.bridge_edge_dump_file = optarg;
+        break;
+
+      case 'c':
+        opt.component_size_dump_file = std::filesystem::path(optarg);
         break;
 
       case 'p':
@@ -264,6 +269,92 @@ int main(int argc, char **argv) {
 
     comm.cout0() << "CC took (s): " << cc_timer.elapsed() << std::endl;
     comm.cout0() << "#of CCs: " << bags.size() << std::endl;
+
+    // DEBUG write component sizes to file
+    try {
+      if (opt.component_size_dump_file.empty()) {
+        opt.component_size_dump_file =
+            opt.pm_knng_datastore_path / "../component_sizes.csv";
+      }
+      if (!opt.component_size_dump_file.empty()) {
+        cc_timer.reset();
+
+        comm.cout0() << "Getting component sizes" << std::endl;
+        // (Component id, rank, component size, local size)
+        static std::vector<std::tuple<cls::id_t, int, cls::id_t, cls::id_t>>
+             all_component_sizes;
+        id_t i = 0;
+        for (auto &b : bags) {
+          std::size_t size = b->size();
+          if (comm.rank() == 0) {
+            std::tuple<cls::id_t, int, cls::id_t, cls::id_t> component_tuple{
+                i, comm.rank(), size, b->local_size()};
+            all_component_sizes.push_back(component_tuple);
+          }
+          ++i;
+        }
+        comm.barrier();
+
+        // comm.cout0() << "Gathering component sizes to rank 0" << std::endl;
+
+        // // (Component id, rank, component size, local size)
+        // static std::vector<std::tuple<cls::id_t, int, cls::id_t, cls::id_t>>
+        //     all_component_sizes;
+
+        // static std::vector<std::tuple<cls::id_t, int, cls::id_t, cls::id_t>>
+        //      local_component_sizes;
+        // id_t i = 0;
+        // for (auto &b : bags) {
+        //   std::size_t size = b->size();
+        //   if (b->local_size() > 0) {
+        //     std::tuple<cls::id_t, int, cls::id_t, cls::id_t> component_tuple{
+        //         i, comm.rank(), size, b->local_size()};
+        //     local_component_sizes.push_back(component_tuple);
+        //   }
+        //   ++i;
+        // }
+        // comm.barrier();
+
+        // comm.async(
+        //     0,
+        //     [](const auto &local_component_sizes) {
+        //       all_component_sizes.insert(all_component_sizes.end(),
+        //                                  local_component_sizes.begin(),
+        //                                  local_component_sizes.end());
+        //     },
+        //     local_component_sizes);
+        // comm.barrier();
+
+        // Print component sizes
+        if (comm.rank() == 0) {
+          std::cout << "Write component sizes to "
+                    << opt.component_size_dump_file << std::endl;
+          std::filesystem::path parent_dir =
+              opt.component_size_dump_file.parent_path();
+          std::filesystem::create_directories(parent_dir);
+          std::ofstream ofs(opt.component_size_dump_file);
+          if (!ofs.is_open()) {
+            comm.cerr0() << "Cannot open file: " << opt.component_size_dump_file
+                         << std::endl;
+            return EXIT_FAILURE;
+          } else {
+            ofs << "component_id,size,local_size\n";
+            for (const auto &row : all_component_sizes) {
+              ofs << std::get<0>(row) << "," << std::get<2>(row) << ","
+                  << std::get<3>(row) << "\n";
+            }
+            ofs.flush();
+            ofs.close();
+          }
+        }
+
+        comm.barrier();
+        comm.cout0() << "Writing CC sizes took (s): " << cc_timer.elapsed()
+                     << std::endl;
+      }
+    } catch (...) {
+      // pass
+    }
 
     // Define distance function
     // Get the position to index map for the indicies in our distance
