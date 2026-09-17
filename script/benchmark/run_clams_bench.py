@@ -39,7 +39,7 @@ def parse_options():
 
     # For input point (feature) data
     parser.add_argument('-p', '--point_path',
-                        required=True,
+                        required=True, type=str,
                         help='Path to the point data file')
     parser.add_argument('-f', '--points_file_format', default='wsv',
                         help='Format of the point data used by DNND. '
@@ -303,7 +303,7 @@ def gen_clams_bench_script(job_name, job_dir, work_dir,
             dnnd_command = f"{dnnd_exe} {verbose_flag} -k {nng_k} -r {nng_r} -d {nng_delta} -f {distance_func} -o {dnnd_ds_path} -b {dnnd_batch_size} -p {points_file_format}"
             if backup_knng:
                 dnnd_ds_path_backup = f"{dnnd_ds_path}_backup"
-                job_script.write(f"echo \"Backing up KNNG datastore to {dnnd_ds_path}\"\n")
+                job_script.write(f"echo \"Backing up KNNG datastore to {dnnd_ds_path_backup}\"\n")
                 dnnd_command = f"{dnnd_command} -B {dnnd_ds_path_backup}"
             dnnd_command = f"{dnnd_command} {point_path}"
             add_srun_cmd(num_tasks_per_node, dnnd_command, job_script)
@@ -367,6 +367,7 @@ def gen_clams_bench_script(job_name, job_dir, work_dir,
 
 
 def main():
+
     # Parse the command line arguments
     opts = parse_options()
     # Remove '--' from opts.sbatch_opts if necessary
