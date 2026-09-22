@@ -212,6 +212,13 @@ std::vector<edge_t> approx_mst(const std::vector<edge_t> &edges,
             << "\nEdges: " << sum(amst_builder.get_result().size(), c)
             << "\nTime: " << amst_time << std::endl;
 
+  // Debug
+  c.cout0() << " Approx bound: " << approx_bound << std::endl;
+  c.cout0() << " Number of buckets: " << amst_builder.get_num_buckets()
+            << std::endl;
+  c.cout0() << " num_vertices_seen = " << amst_builder.num_vertices_seen()
+            << std::endl;
+
   return amst_builder.get_result();
 }
 
@@ -398,6 +405,9 @@ int main(int argc, char **argv) {
                                   ? read_dnnd_output(txt_input_filenames, world)
                                   : read_pm_knng_output(pm_input_path, world);
   world.cout0("Edge reading time (s): ", read_timer.elapsed());
+  world.cout0() << "Total number of edges read = "
+                << ygm::sum(edges.size(), world) << std::endl;  // debug
+  world.barrier();
 
   auto amst_edges = approx_mst(edges, amst_approx_bound, world);
   world.cout0() << "AMST edges: " << sum(amst_edges.size(), world) << std::endl;
@@ -411,6 +421,13 @@ int main(int argc, char **argv) {
   ygm::utility::timer output_timer;
   if (!pm_output_filename.empty()) {
     write_output_single_pm(pm_output_filename, amst_edges, world);
+
+    // // debug
+    // std::filesystem::path out_dir =
+    //     std::filesystem::path(pm_output_filename).parent_path() / "amst_txt";
+    // std::filesystem::create_directories(out_dir);
+    // std::string out_file = out_dir.string() + "/amst.txt";
+    // write_output_single_file(out_file, amst_edges, world);
   }
   world.cout0("Output writing time (s): ", output_timer.elapsed());
 

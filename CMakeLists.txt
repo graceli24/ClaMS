@@ -108,6 +108,7 @@ FetchContent_MakeAvailable(cereal)
 if (MPI_CXX_FOUND)
     FetchContent_Declare(ygm
             GIT_REPOSITORY https://github.com/LLNL/ygm.git
+            # GIT_TAG v0.10-dev
             GIT_TAG master
             SYSTEM
     )
@@ -269,3 +270,4 @@ endfunction()
 add_subdirectory(src)
 add_subdirectory(test)
 add_subdirectory(script)
+add_subdirectory(antibody_distance_example)

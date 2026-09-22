@@ -14,6 +14,7 @@
 
 #include <ygm/comm.hpp>
 #include <ygm/container/bag.hpp>
+#include <ygm/utility/timer.hpp>  //debug
 
 #include "global_index.h"
 #include "mst.h"
@@ -40,6 +41,9 @@ std::vector<T> mfc(
     ygm::comm                                            &w,
     std::vector<std::shared_ptr<ygm::container::bag<T>>> &components,
     Dist &&dist, EdgeCallback &&edge_callback) {
+  ygm::utility::timer timer;  // debug
+  timer.reset();              // debug
+
   static std::vector<std::shared_ptr<ygm::container::bag<T>>> *s_components;
   s_components = &components;
 
@@ -117,6 +121,9 @@ std::vector<T> mfc(
 
     w.barrier();
   }
+  w.cout0() << "Got rep for each component. Time (s):" << timer.elapsed()
+            << std::endl;  // debug
+  std::cout.flush();
 
   w.barrier();
 
@@ -142,6 +149,8 @@ std::vector<T> mfc(
     merged_tmp.clear();
     new_edges.clear();
   };
+
+  timer.reset();  // debug
 
   // Loop over every ordered pair of components
   for (size_t i = 0; i < components.size(); i++) {
@@ -178,7 +187,15 @@ std::vector<T> mfc(
       // Add the new edge to the potential tree
       new_edges.push_back(new_element);
     }
+
+    w.cout0() << "Processed component " << i << " with size "
+              << components[i]->size()
+              << ". Time elapsed (s): " << timer.elapsed()
+              << std::endl;  // debug
+    std::cout.flush();
   }
+
+  timer.reset();  // debug
 
   // One final local call to MST to make sure only the local minimal edges are
   // reduced
@@ -253,6 +270,10 @@ std::vector<T> mfc(
   }
 
   w.barrier();
+
+  w.cout0() << "Finished final MFC wrap up. Time (s):" << timer.elapsed()
+            << std::endl;  // debug
+  std::cout.flush();
 
   return reps;
 }
