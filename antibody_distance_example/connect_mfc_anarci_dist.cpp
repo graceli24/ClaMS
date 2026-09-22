@@ -22,6 +22,7 @@
 #include "../src/common.hpp"
 #include "../src/mfc/mfc.h"
 #include "anarci_common.hpp"
+// #include "mfc_sample_lcc.h"
 
 namespace cls = clams;
 
@@ -229,15 +230,10 @@ int main(int argc, char **argv) {
     std::cout.flush();
 
     bags.reserve(rep_set.size());
-    int i = 0;  // debug
     for (auto &rep : rep_set) {
       bags.emplace_back(
           new ygm::container::bag<std::pair<cls::id_t, cls::point_t>>(comm));
       bag_map.emplace(rep, bags.back());
-      comm.cout0() << "Debug: Bag " << i << " for rep " << rep << " created"
-                   << std::endl;
-      std::cout.flush();
-      ++i;
     }
 
     comm.cout0() << "Debug: created bag of bags" << std::endl;  // debug
@@ -295,36 +291,6 @@ int main(int argc, char **argv) {
         }
         comm.barrier();
 
-        // comm.cout0() << "Gathering component sizes to rank 0" << std::endl;
-
-        // // (Component id, rank, component size, local size)
-        // static std::vector<std::tuple<cls::id_t, int, cls::id_t, cls::id_t>>
-        //     all_component_sizes;
-
-        // static std::vector<std::tuple<cls::id_t, int, cls::id_t, cls::id_t>>
-        //      local_component_sizes;
-        // id_t i = 0;
-        // for (auto &b : bags) {
-        //   std::size_t size = b->size();
-        //   if (b->local_size() > 0) {
-        //     std::tuple<cls::id_t, int, cls::id_t, cls::id_t> component_tuple{
-        //         i, comm.rank(), size, b->local_size()};
-        //     local_component_sizes.push_back(component_tuple);
-        //   }
-        //   ++i;
-        // }
-        // comm.barrier();
-
-        // comm.async(
-        //     0,
-        //     [](const auto &local_component_sizes) {
-        //       all_component_sizes.insert(all_component_sizes.end(),
-        //                                  local_component_sizes.begin(),
-        //                                  local_component_sizes.end());
-        //     },
-        //     local_component_sizes);
-        // comm.barrier();
-
         // Print component sizes
         if (comm.rank() == 0) {
           std::cout << "Write component sizes to "
@@ -375,6 +341,11 @@ int main(int argc, char **argv) {
     comm.cout0() << "ANARCI distance type: " << opt.distance_name << std::endl;
     comm.cout0() << "Positions used in distance calculation: "
                  << positions_in_calc_ss.str() << std::endl;
+    if (opt.distance_name == "identity") {
+      comm.cout0() << "Don't include edges: " << opt.dont_include_ends << "\n"
+                   << "Use unnormalized Hamming distance: "
+                   << opt.use_hamming_distance << std::endl;
+    }
 
     std::vector<std::vector<sim_t>> substitution_matrix;
     std::vector<amino_acid_t>       char_to_int_converter;
@@ -385,8 +356,8 @@ int main(int argc, char **argv) {
                    << "a = " << opt.inverse_power << std::endl;
 
       auto ret = read_substitution_matrix(opt.substitution_matrix_path);
-      std::vector<std::vector<sim_t>> substitution_matrix   = ret.first;
-      std::vector<amino_acid_t>       char_to_int_converter = ret.second;
+      substitution_matrix   = ret.first;
+      char_to_int_converter = ret.second;
     }
 
     // Get the correct anarci distance function

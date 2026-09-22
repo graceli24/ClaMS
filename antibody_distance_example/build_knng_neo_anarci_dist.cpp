@@ -303,6 +303,11 @@ int main(int argc, char **argv) {
     comm.cout0() << "ANARCI distance type: " << opt.distance_name << std::endl;
     comm.cout0() << "Positions used in distance calculation: "
                  << positions_in_calc_ss.str() << std::endl;
+    if (opt.distance_name == "identity") {
+      comm.cout0() << "Don't include edges: " << opt.dont_include_ends << "\n"
+                   << "Use unnormalized Hamming distance: "
+                   << opt.use_hamming_distance << std::endl;
+    }
 
     std::vector<std::vector<sim_t>> substitution_matrix;
     std::vector<amino_acid_t>       char_to_int_converter;
@@ -313,8 +318,8 @@ int main(int argc, char **argv) {
                    << "a = " << opt.inverse_power << std::endl;
 
       auto ret = read_substitution_matrix(opt.substitution_matrix_path);
-      std::vector<std::vector<sim_t>> substitution_matrix   = ret.first;
-      std::vector<amino_acid_t>       char_to_int_converter = ret.second;
+      substitution_matrix   = ret.first;
+      char_to_int_converter = ret.second;
     }
 
     // Get the correct anarci distance function
@@ -367,6 +372,24 @@ int main(int argc, char **argv) {
         } else {
           use_missing_end_char = false;
         }
+
+        static sequence_t dummy_point{
+            5,   19,  5,   255, 10,  5,   6,   15,  7,   14,  255, 7,   10,
+            19,  11,  14,  15,  6,   16,  10,  15,  10,  16,  4,   19,  19,
+            15,  7,   7,   15,  9,   255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 16,  1,   15,  15,  17,  11,  255, 17,  10,  1,   11,
+            255, 14,  255, 14,  255, 7,   255, 11,  255, 255, 7,   255, 14,
+            7,   255, 17,  13,  7,   8,   9,   19,  7,   9,   255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 16,  4,   9,   16,  18,
+            18,  255, 255, 2,   255, 255, 14,  255, 255, 15,  10,  255, 255,
+            11,  255, 255, 255, 2,   1,   15,  16,  9,   15,  0,   255, 3,
+            255, 255, 255, 16,  255, 15,  255, 255, 1,   2,   255, 255, 255,
+            255, 5,   255, 13,  15,  10,  11,  10,  11,  13,  12,  16,  0,
+            255, 14,  3,   16,  0,   19,  18,  18,  4,   0,   1,   2,   11,
+            2,   18,  10,  10,  9,   255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            15,  7,   15,  7,   15,  10,  3,   19,  17,  7,   255, 1,   7,
+            19,  10,  19,  16,  19,  15,  15};
 
         auto parse_id_sequence_line_lambda = [&id_vector, &point_vector,
                                               &char_to_int_converter](

@@ -454,11 +454,10 @@ std::string anarci_to_string(const anarci_vect_type &anarci_vector) {
 
 const auto get_anarci_substitution_distance_lambda(
     const std::vector<std::vector<sim_t>> &substitution_matrix,
-    const cls::distance_t                 &inverse_power,
-    const cls::distance_t                 &dist_multiplier = 1.0) {
+    const cls::distance_t                 &inverse_power) {
   auto anarci_substitution_distance_lambda =
-      [&substitution_matrix, &inverse_power, &dist_multiplier](
-          const auto &seq1, const auto &seq2) {
+      [&substitution_matrix, &inverse_power](const auto &seq1,
+                                             const auto &seq2) {
         // Get sequence lengths
         const uint32_t m =
             seq1.size();  // m+1 rows in the alignment score matrix
@@ -498,7 +497,6 @@ const auto get_anarci_substitution_distance_lambda(
           return std::numeric_limits<cls::distance_t>::max();
         } else {
           cls::distance_t distance =
-              dist_multiplier *
               std::pow(static_cast<cls::distance_t>(sim_score), -inverse_power);
           return distance;
         }
