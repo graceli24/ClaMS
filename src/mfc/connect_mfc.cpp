@@ -165,15 +165,10 @@ int main(int argc, char **argv) {
     std::cout.flush();
 
     bags.reserve(rep_set.size());
-    int i = 0;  // debug
     for (auto &rep : rep_set) {
       bags.emplace_back(
           new ygm::container::bag<std::pair<cls::id_t, cls::point_t>>(comm));
       bag_map.emplace(rep, bags.back());
-      comm.cout0() << "Debug: Bag " << i << " for rep " << rep << " created"
-                   << std::endl;
-      std::cout.flush();
-      ++i;
     }
 
     comm.cout0() << "Debug: created bag of bags" << std::endl;  // debug

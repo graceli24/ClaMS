@@ -186,14 +186,13 @@ std::vector<T> mfc(
       };
       // Add the new edge to the potential tree
       new_edges.push_back(new_element);
-
-      w.cout0() << "Processed components " << i << " with size "
-                << components[i]->size() << " and " << j << " with size "
-                << components[j]->size()
-                << ". Time elapsed (s): " << timer.elapsed()
-                << std::endl;  // debug
-      std::cout.flush();
     }
+
+    w.cout0() << "Processed component " << i << " with size "
+              << components[i]->size()
+              << ". Time elapsed (s): " << timer.elapsed()
+              << std::endl;  // debug
+    std::cout.flush();
   }
 
   timer.reset();  // debug
