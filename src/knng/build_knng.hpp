@@ -24,7 +24,6 @@ struct option_t {
   std::vector<std::filesystem::path> point_file_names;
   std::filesystem::path              scratchpath{"/dev/shm/dnnd_datastore"};
   std::filesystem::path              datastorepath{};
-  std::filesystem::path              backup_datastorepath{};
   std::string                        point_file_format;
   std::size_t                        batch_size{1ULL << 23};
   int                                num_threads{-1};  // For NEO-DNND
@@ -38,7 +37,7 @@ inline bool parse_options(int argc, char **argv, option_t &opt, bool &help) {
   help = false;
 
   int n;
-  while ((n = ::getopt(argc, argv, "k:r:R:d:f:p:s:o:B:b:T:vh")) != -1) {
+  while ((n = ::getopt(argc, argv, "k:r:R:d:f:p:s:o:b:T:vh")) != -1) {
     switch (n) {
       case 'k':
         opt.index_k = std::stoi(optarg);
@@ -70,10 +69,6 @@ inline bool parse_options(int argc, char **argv, option_t &opt, bool &help) {
 
       case 'o':
         opt.datastorepath = std::filesystem::path(optarg);
-        break;
-
-      case 'B':
-        opt.backup_datastorepath = std::filesystem::path(optarg);
         break;
 
       case 'b':
@@ -137,9 +132,6 @@ inline void usage(std::string_view exe_name, cout_type &cout) {
   cout << "  -o <path>   If specified, copy the PM datastore from the "
           "scratchpad to to this path."
        << std::endl;
-  cout << "  -B <path>   If specified, and -o is also specified, copy the PM "
-          "datastore from the scratchpad to to this path as a backup copy."
-       << std::endl;
   cout << "  -s <path>   Path to datastore scratchpad. Hold a PM datastore "
           "during computation (default: /dev/shm/dnnd_datastore). Recommended "
           "to be on a fast storage, e.g., tmpfs (/dev/shm)."
@@ -162,7 +154,6 @@ inline void show_options(const option_t &opt, cout_type &cout) {
   cout << "  point file format: " << opt.point_file_format << std::endl;
   cout << "  datastore scratch path: " << opt.scratchpath << std::endl;
   cout << "  datastore path: " << opt.datastorepath << std::endl;
-  cout << "  backup datastore path: " << opt.backup_datastorepath << std::endl;
   cout << "  batch size: " << opt.batch_size << std::endl;
   cout << "  verbose: " << opt.verbose << std::endl;
 }

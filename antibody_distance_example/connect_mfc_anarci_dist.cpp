@@ -266,6 +266,23 @@ int main(int argc, char **argv) {
     comm.cout0() << "CC took (s): " << cc_timer.elapsed() << std::endl;
     comm.cout0() << "#of CCs: " << bags.size() << std::endl;
 
+    // Get the LCC component id and size on all ranks
+    id_t        lcc_component_id = 0;
+    std::size_t lcc_size         = 0;
+    id_t        i                = 0;
+    for (auto &b : bags) {
+      std::size_t size = b->size();
+      if (size > lcc_size) {
+        lcc_size         = size;
+        lcc_component_id = i;
+      }
+      ++i;
+    }
+    comm.barrier();
+    comm.cout0() << "Largest connected component (LCC) size: " << lcc_size
+                 << std::endl;
+    comm.cout0() << "LCC index: " << lcc_component_id << std::endl;
+
     // DEBUG write component sizes to file
     try {
       if (opt.component_size_dump_file.empty()) {
