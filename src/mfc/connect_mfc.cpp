@@ -33,21 +33,27 @@ void show_usage(const char *prog_name) {
             << std::endl;
   std::cout << "  -f <string>: Distance function name (e.g., l2, cosine)."
             << std::endl;
+  std::cout << "  -s <float>: (Optional) Sample the largest connected "
+               "component to only consider s fraction of points. Requires "
+               "0 < s < 1 and if no valid is s provided, defaults to s = 1, no "
+               "sampling of the LCC"
+            << std::endl;
   std::cout << "  -b <path>: (Optional) File to dump the bridge edges."
             << std::endl;
 }
 
 bool parse_option(int argc, char *argv[],
                   std::filesystem::path &pm_knng_datastore_path,
-                  std::string           &distance_name,
+                  std::string &distance_name, float &lcc_sample_fraction,
                   std::string           &bridge_edge_dump_file,
                   std::filesystem::path &component_size_dump_file) {
   int opt;
   pm_knng_datastore_path.clear();
   distance_name.clear();
   component_size_dump_file.clear();
+  lcc_sample_fraction = 1.0;
 
-  while ((opt = getopt(argc, argv, "d:f:b:c:")) != -1) {
+  while ((opt = getopt(argc, argv, "d:f:s:b:c:")) != -1) {
     switch (opt) {
       case 'd':
         pm_knng_datastore_path = std::filesystem::path(optarg);
@@ -57,6 +63,9 @@ bool parse_option(int argc, char *argv[],
         break;
       case 'b':
         bridge_edge_dump_file = optarg;
+        break;
+      case 's':
+        lcc_sample_fraction = std::stof(optarg);
         break;
       case 'c':
         component_size_dump_file = std::filesystem::path(optarg);
@@ -80,6 +89,14 @@ bool parse_option(int argc, char *argv[],
     return false;
   }
 
+  if (lcc_sample_fraction <= 0 | lcc_sample_fraction > 1) {
+    std::cerr << "Provided LCC sample fraction " << lcc_sample_fraction
+              << " is not strictly between 0 and 1. Defaulting to 1 and not "
+                 "sampling the LCC."
+              << std::endl;
+    lcc_sample_fraction = 1.0;
+  }
+
   return true;
 }
 
@@ -88,11 +105,12 @@ int main(int argc, char **argv) {
 
   std::filesystem::path pm_knng_datastore_path;
   std::string           distance_name;
+  float                 lcc_sample_fraction;
   std::string           bridge_edge_dump_file;
   std::filesystem::path component_size_dump_file;
-  const bool            opt_parse_ret =
-      parse_option(argc, argv, pm_knng_datastore_path, distance_name,
-                   bridge_edge_dump_file, component_size_dump_file);
+  const bool            opt_parse_ret = parse_option(
+      argc, argv, pm_knng_datastore_path, distance_name, lcc_sample_fraction,
+      bridge_edge_dump_file, component_size_dump_file);
   if (!opt_parse_ret) {
     if (comm.rank0()) {
       show_usage(argv[0]);
@@ -200,12 +218,25 @@ int main(int argc, char **argv) {
     comm.cout0() << "CC took (s): " << cc_timer.elapsed() << std::endl;
     comm.cout0() << "#of CCs: " << bags.size() << std::endl;
 
+    // Get the LCC component id and size on all ranks
+    id_t        lcc_component_id = 0;
+    std::size_t lcc_size         = 0;
+    id_t        i                = 0;
+    for (auto &b : bags) {
+      std::size_t size = b->size();
+      if (size > lcc_size) {
+        lcc_size         = size;
+        lcc_component_id = i;
+      }
+      ++i;
+    }
+    comm.barrier();
+    comm.cout0() << "Largest connected component (LCC) size: " << lcc_size
+                 << std::endl;
+    comm.cout0() << "LCC index: " << lcc_component_id << std::endl;
+
     // DEBUG write component sizes to file
     try {
-      if (component_size_dump_file.empty()) {
-        component_size_dump_file =
-            pm_knng_datastore_path / "../component_sizes.csv";
-      }
       if (!component_size_dump_file.empty()) {
         cc_timer.reset();
 
@@ -224,36 +255,6 @@ int main(int argc, char **argv) {
           ++i;
         }
         comm.barrier();
-
-        // comm.cout0() << "Gathering component sizes to rank 0" << std::endl;
-
-        // //(Component id, rank, component size, local size)
-        // static std::vector<std::tuple<cls::id_t, int, cls::id_t, cls::id_t>>
-        //     all_component_sizes;
-
-        // static std::vector<std::tuple<cls::id_t, int, cls::id_t, cls::id_t>>
-        //      local_component_sizes;
-        // id_t i = 0;
-        // for (auto &b : bags) {
-        //   std::size_t size = b->size();
-        //   if (b->local_size() > 0) {
-        //     std::tuple<cls::id_t, int, cls::id_t, cls::id_t> component_tuple{
-        //         i, comm.rank(), size, b->local_size()};
-        //     local_component_sizes.push_back(component_tuple);
-        //   }
-        //   ++i;
-        // }
-        // comm.barrier();
-
-        // comm.async(
-        //     0,
-        //     [](const auto &local_component_sizes) {
-        //       all_component_sizes.insert(all_component_sizes.end(),
-        //                                  local_component_sizes.begin(),
-        //                                  local_component_sizes.end());
-        //     },
-        //     local_component_sizes);
-        // comm.barrier();
 
         // Print component sizes
         if (comm.rank() == 0) {
@@ -291,6 +292,79 @@ int main(int argc, char **argv) {
     //   comm.cout0() << "    CC: size " << s << " local: " << b.local_size() <<
     //   std::endl;
     // }
+
+    // Sample from the LCC if needed
+    if ((lcc_sample_fraction < 1.0) & (lcc_size > comm.size())) {
+      ygm::utility::timer sample_lcc_timer;
+      comm.cout0() << "Sampling from the LCC. Sample fraction: "
+                   << lcc_sample_fraction << std::endl;
+
+      // Get which point indicies in the component to sample
+      uint64_t num_samples =
+          static_cast<uint64_t>(std::ceil(lcc_sample_fraction * lcc_size));
+      std::vector<uint64_t> idxs(num_samples);
+      comm.cout0() << "Number of samples: " << num_samples << std::endl;
+
+      if (comm.rank() == 0) {
+        // Create a vector with index from 0 to (lcc_size - 1)
+        idxs.resize(lcc_size);
+        std::iota(idxs.begin(), idxs.end(), 0);
+
+        // Partial Fischer Yates shuffle
+        uint64_t                   seed = std::random_device{}();
+        std::default_random_engine random(seed);
+        for (int64_t i = 0; i < num_samples; ++i) {
+          std::uniform_int_distribution<int64_t> dist(i, lcc_size);
+          int64_t                                j = dist(random);
+          std::swap(idxs[i], idxs[j]);
+        }
+
+        idxs.resize(num_samples);
+      }
+      MPI_Bcast(idxs.data(), num_samples, MPI_UINT64_T, 0, comm.get_mpi_comm());
+
+      // Get the prefix sum of local LCC size
+      uint64_t local_lcc_size = bags[lcc_component_id]->local_size();
+      uint64_t prefix_sum     = 0;
+      MPI_Exscan(&local_lcc_size, &prefix_sum, 1, MPI_UINT64_T, MPI_SUM,
+                 comm.get_mpi_comm());
+      if (comm.rank() == 0) {
+        prefix_sum = 0;
+      }
+
+      // Give every rank vector of all consecutive prefix sums
+      std::vector<uint64_t> prefix_sums(comm.size());
+      MPI_Allgather(&prefix_sum, 1, MPI_UINT64_T, prefix_sums.data(), 1,
+                    MPI_UINT64_T, comm.get_mpi_comm());
+      // Append the lcc size as the last entry to prefix sums
+      prefix_sums.push_back(lcc_size);
+
+      // Get the sampled points on each rank
+      std::vector<std::pair<cls::id_t, cls::point_t>> sampled_points;
+      int                                             rank = comm.rank();
+      auto local_lcc_begin = bags[lcc_component_id]->local_begin();
+      for (uint64_t &idx : idxs) {
+        if ((prefix_sums.at(rank) <= idx) & (idx < prefix_sums.at(rank + 1))) {
+          uint64_t local_idx = idx - prefix_sums.at(rank);
+          sampled_points.push_back(*std::next(local_lcc_begin, local_idx));
+        }
+      }
+      comm.barrier();
+
+      // Clear the old LCC component bag, insert the sampled component points
+      // and rebalance
+      bags[lcc_component_id]->clear();
+      for (auto &item : sampled_points) {
+        bags[lcc_component_id]->local_insert(item);
+      }
+      comm.barrier();
+      if (bags[lcc_component_id]->size() > comm.size()) {
+        bags[lcc_component_id]->rebalance();
+      }
+
+      comm.cout0() << "Time to sample LCC (s): " << sample_lcc_timer.elapsed()
+                   << std::endl;
+    }
 
     static std::vector<std::tuple<cls::id_t, cls::id_t, cls::distance_t>>
         local_bridge_edges;

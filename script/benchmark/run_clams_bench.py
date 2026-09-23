@@ -76,6 +76,11 @@ def parse_options():
                         dest='amst_approx_bound_range', action='store', type=str,
                         help='Approximation bound for AMST. Single value or comma separated list of values (e.g., 1.1,1.2,1.4).')
 
+    # For MFC
+    parser.add_argument('-c', '--mfc_lcc_sample_rate', default='1.0',
+                        dest='mfc_lcc_sample_rate', action='store', type=float,
+                        help='Sample rate for sampling points in the LCC for MFC step.')
+
     # For HDBSCAN
     # Min cluster size, conmma separated list of min cluster sizes, or range of min cluster sizes
     parser.add_argument('-m', '--min_cluster_size', default='5',
@@ -268,7 +273,7 @@ def gen_clams_bench_script(job_name, job_dir, work_dir,
                                   nng_r, nng_delta,
                                   pm_datastore_copy_exe,
                                   backup_knng,
-                                  mfc_exe,
+                                  mfc_exe, mfc_lcc_sample_rate,
                                   amst_exe, amst_approx_bound_list,
                                   clustering_exe,
                                   evaluator,
@@ -296,12 +301,15 @@ def gen_clams_bench_script(job_name, job_dir, work_dir,
 
         # Run the DNND step
         job_script.write(f"echo \"kNNG k: {nng_k}\"\n")
+        print("input_dnnd_ds_path", input_dnnd_ds_path)
         if len(input_dnnd_ds_path) == 0:
             start_stage(job_script, "Building KNNG")
             dnnd_ds_path = f"{work_dir}/dnnd_pm_datastore"
             dnnd_batch_size = 2 ** 25
             verbose_flag = '-v' if verbose else ''
-            dnnd_command = f"{dnnd_exe} {verbose_flag} -k {nng_k} -r {nng_r} -d {nng_delta} -f {distance_func} -o {dnnd_ds_path} -b {dnnd_batch_size} -p {points_file_format}"
+            dnnd_command = f"{dnnd_exe} {verbose_flag} -k {nng_k} -r {nng_r} -d {nng_delta} -f {distance_func} -o {dnnd_ds_path} -b {dnnd_batch_size} -p {points_file_format} {point_path}"
+            add_srun_cmd(num_tasks_per_node, dnnd_command, job_script)
+            finish_stage(job_script)
             if backup_knng:
                 dnnd_ds_path_backup = f"{dnnd_ds_path}_backup"
                 job_script.write(f"echo \"Backing up KNNG datastore\"\n")
@@ -314,7 +322,10 @@ def gen_clams_bench_script(job_name, job_dir, work_dir,
 
         # Connect the CCs
         start_stage(job_script, "Connecting the CCs using MFC")
-        mfc_command = f"{mfc_exe} -d {dnnd_ds_path} -f {distance_func}"
+        component_size_path = f"{work_dir}/knng_component_sizes.csv"
+        mfc_command = f"{mfc_exe} -d {dnnd_ds_path} -f {distance_func} -c {component_size_path}"
+        if 0 < mfc_lcc_sample_rate and mfc_lcc_sample_rate < 1:
+            mfc_command = f"{mfc_command} -s {mfc_lcc_sample_rate}"
         add_srun_cmd(num_tasks_per_node, mfc_command, job_script)
         finish_stage(job_script)
 
@@ -414,6 +425,7 @@ def main():
                                                opts.pm_datastore_copy_exe,
                                                opts.backup_knng,
                                                opts.mfc_exe,
+                                               opts.mfc_lcc_sample_rate,
                                                opts.amst_exe,
                                                amst_approx_bound_list,
                                                opts.clustering_exe,
