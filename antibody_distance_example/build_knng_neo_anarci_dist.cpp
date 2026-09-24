@@ -33,19 +33,10 @@ struct option_t {
   std::filesystem::path              scratchpath = "/dev/shm/dnnd_datastore";
   std::filesystem::path              datastorepath{};
   std::filesystem::path              backup_datastorepath{};
-  std::size_t                        batch_size  = 1ULL << 23;
-  int                                num_threads = -1;
-  bool                               verbose     = false;
-  // Distance name options are identity or substitution
-  std::string              distance_name        = "identity";
-  std::vector<std::string> region_names         = {"full"};
-  bool                     dont_include_ends    = false;
-  bool                     use_hamming_distance = false;
-  // Assumes we run the program from custom_distance_example
-  std::filesystem::path substitution_matrix_path = "./BLOSUM62.txt";
-  // Convert substitution similarity score to a distance as
-  // distance = similarity^(-a)
-  dist_t inverse_power = 1;
+  std::size_t                        batch_size   = 1ULL << 23;
+  int                                num_threads  = -1;
+  bool                               verbose      = false;
+  std::vector<std::string>           region_names = {"full"};
 };
 
 inline bool parse_options(int argc, char **argv, option_t &opt, bool &help) {
@@ -54,7 +45,7 @@ inline bool parse_options(int argc, char **argv, option_t &opt, bool &help) {
   help                               = false;
 
   int n;
-  while ((n = ::getopt(argc, argv, "k:r:R:d:f:s:o:B:b:T:p:M:a:xHvh")) != -1) {
+  while ((n = ::getopt(argc, argv, "k:r:R:d:s:o:b:T:p:vh")) != -1) {
     switch (n) {
       case 'k':
         opt.index_k = std::stoi(optarg);
@@ -72,20 +63,12 @@ inline bool parse_options(int argc, char **argv, option_t &opt, bool &help) {
         opt.delta = std::stod(optarg);
         break;
 
-      case 'f':
-        opt.distance_name = optarg;
-        break;
-
       case 's':
         opt.scratchpath = std::filesystem::path(optarg);
         break;
 
       case 'o':
         opt.datastorepath = std::filesystem::path(optarg);
-        break;
-
-      case 'B':
-        opt.backup_datastorepath = std::filesystem::path(optarg);
         break;
 
       case 'b':
@@ -98,22 +81,6 @@ inline bool parse_options(int argc, char **argv, option_t &opt, bool &help) {
 
       case 'p':
         provided_region_option = optarg;
-        break;
-
-      case 'x':
-        opt.dont_include_ends = true;
-        break;
-
-      case 'H':
-        opt.use_hamming_distance = true;
-        break;
-
-      case 'M':
-        opt.substitution_matrix_path = optarg;
-        break;
-
-      case 'a':
-        opt.inverse_power = std::stof(optarg);
         break;
 
       case 'v':
@@ -179,10 +146,6 @@ inline void usage(std::string_view exe_name, cout_type &cout) {
   cout << "  -o <path>   If specified, copy the PM datastore from the "
           "scratchpad to to this path."
        << std::endl;
-  cout << "  -B <path>   If specified and -o is also specified, then copy the "
-          "PM datastore from the scratchpad to to this path to create an "
-          "additional backup of the kNNG."
-       << std::endl;
   cout << "  -s <path>   Path to datastore scratchpad. Hold a PM datastore "
           "during computation (default: /dev/shm/dnnd_datastore). Recommended "
           "to be on a fast storage, e.g., tmpfs (/dev/shm)."
@@ -190,27 +153,9 @@ inline void usage(std::string_view exe_name, cout_type &cout) {
   cout << "  -b <int>    Batch size (default: 1^23)" << std::endl;
   cout << "  -T <int>    Number of threads for NEO-DNND (optional)"
        << std::endl;
-  cout << "  -f <str>    Distance name. Options are 'identity' or "
-          "'substitution' (default: identity)"
-       << std::endl;
   cout << "  -p <str>    Region names. Regions of the antibody ANARCI sequence "
           "to use. Options are 'full', 'cdrs', 'cdr{i}' where i is 1 2 or 3, "
           "or a comma-separated list of positions (default: full)"
-       << std::endl;
-  cout << "  -x          Don't include ends (start/end of ANARCI positions "
-          " before there's amino acids). Only applies if using identity "
-          "distance."
-       << std::endl;
-  cout << "  -H          Use unnormalized Hamming distance instead of identity "
-          "distance. Only applies if using identity instead of substitution "
-          "distance."
-       << std::endl;
-  cout << "  -M <path>   Path to substitution matrix file. Only applies if "
-          "using substitution distance."
-       << std::endl;
-  cout << "  -a <float>  Exponent a used to convert substitution similarity to "
-          "distance. distance = similarity^(-a). Only applies if using "
-          "substitution distance."
        << std::endl;
   cout << "  -v          Verbose mode" << std::endl;
   cout << "  -h          Show this message" << std::endl;
@@ -225,9 +170,14 @@ inline void show_options(const option_t &opt, cout_type &cout) {
   cout << "  delta: " << opt.delta << std::endl;
   cout << "  datastore scratch path: " << opt.scratchpath << std::endl;
   cout << "  datastore path: " << opt.datastorepath << std::endl;
-  cout << "  backup datastore path: " << opt.backup_datastorepath << std::endl;
   cout << "  batch size: " << opt.batch_size << std::endl;
   cout << "  verbose: " << opt.verbose << std::endl;
+  std::stringstream ss;
+  ss << "  region names: ";
+  for (auto &region : opt.region_names) {
+    ss << region << " ";
+  }
+  cout << ss.str() << std::endl;
 }
 
 template <typename id_type, typename feature_element_type,
@@ -300,51 +250,13 @@ int main(int argc, char **argv) {
     std::sort(idxs_for_distance_calculation.begin(),
               idxs_for_distance_calculation.end());
 
-    comm.cout0() << "ANARCI distance type: " << opt.distance_name << std::endl;
     comm.cout0() << "Positions used in distance calculation: "
                  << positions_in_calc_ss.str() << std::endl;
-    if (opt.distance_name == "identity") {
-      comm.cout0() << "Don't include edges: " << opt.dont_include_ends << "\n"
-                   << "Use unnormalized Hamming distance: "
-                   << opt.use_hamming_distance << std::endl;
-    }
-
-    std::vector<std::vector<sim_t>> substitution_matrix;
-    std::vector<amino_acid_t>       char_to_int_converter;
-    if (opt.distance_name == "substitution") {
-      comm.cout0() << "Distance calculation uses substitution matrix at: "
-                   << opt.substitution_matrix_path << std::endl;
-      comm.cout0() << "Distance is calculated distance = similarity^(-a) with "
-                   << "a = " << opt.inverse_power << std::endl;
-
-      auto ret = read_substitution_matrix(opt.substitution_matrix_path);
-      substitution_matrix   = ret.first;
-      char_to_int_converter = ret.second;
-    }
-
-    // Get the correct anarci distance function
-    static auto anarci_identity_distance = get_anarci_identity_distance_lambda(
-        opt.dont_include_ends, opt.use_hamming_distance);
-    static auto anarci_substitution_distance =
-        get_anarci_substitution_distance_lambda(substitution_matrix,
-                                                opt.inverse_power);
-
-    static bool use_substitution_distance;
-    if (opt.distance_name == "substitution") {
-      use_substitution_distance = true;
-    } else {
-      use_substitution_distance = false;
-    }
-
-    static auto anarci_distance = [](const auto &seq1, const auto &seq2) {
-      if (use_substitution_distance) {
-        return anarci_substitution_distance(seq1, seq2);
-      } else {
-        return anarci_identity_distance(seq1, seq2);
-      }
-    };
 
     // Build kNNG using neo_dnnd
+    std::function<dist_t(const neo_dnnd_sequence_t &,
+                         const neo_dnnd_sequence_t &)>
+        anarci_distance = anarci_substitution_distance<neo_dnnd_sequence_t>;
     neo_dnnd_t neo_dnnd(anarci_distance, comm, opt.verbose);
 
     comm.cout0() << "\n<<Read Points>>" << std::endl;
@@ -364,35 +276,7 @@ int main(int argc, char **argv) {
         ygm::comm            ygm_comm(comm.comm());
         ygm::io::line_parser input_line_parser(ygm_comm, str_paths);
 
-        // Specify whether missing chars '\0' at sequence ends should be
-        // converted to special missing end character '|'
-        static bool use_missing_end_char;
-        if (opt.distance_name == "identity") {
-          use_missing_end_char = true;
-        } else {
-          use_missing_end_char = false;
-        }
-
-        static sequence_t dummy_point{
-            5,   19,  5,   255, 10,  5,   6,   15,  7,   14,  255, 7,   10,
-            19,  11,  14,  15,  6,   16,  10,  15,  10,  16,  4,   19,  19,
-            15,  7,   7,   15,  9,   255, 255, 255, 255, 255, 255, 255, 255,
-            255, 255, 16,  1,   15,  15,  17,  11,  255, 17,  10,  1,   11,
-            255, 14,  255, 14,  255, 7,   255, 11,  255, 255, 7,   255, 14,
-            7,   255, 17,  13,  7,   8,   9,   19,  7,   9,   255, 255, 255,
-            255, 255, 255, 255, 255, 255, 255, 255, 16,  4,   9,   16,  18,
-            18,  255, 255, 2,   255, 255, 14,  255, 255, 15,  10,  255, 255,
-            11,  255, 255, 255, 2,   1,   15,  16,  9,   15,  0,   255, 3,
-            255, 255, 255, 16,  255, 15,  255, 255, 1,   2,   255, 255, 255,
-            255, 5,   255, 13,  15,  10,  11,  10,  11,  13,  12,  16,  0,
-            255, 14,  3,   16,  0,   19,  18,  18,  4,   0,   1,   2,   11,
-            2,   18,  10,  10,  9,   255, 255, 255, 255, 255, 255, 255, 255,
-            255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-            15,  7,   15,  7,   15,  10,  3,   19,  17,  7,   255, 1,   7,
-            19,  10,  19,  16,  19,  15,  15};
-
-        auto parse_id_sequence_line_lambda = [&id_vector, &point_vector,
-                                              &char_to_int_converter](
+        auto parse_id_sequence_line_lambda = [&id_vector, &point_vector](
                                                  const std::string &line) {
           size_t pos = line.find_first_of(" \t");
 
@@ -404,8 +288,9 @@ int main(int argc, char **argv) {
           std::string anarci_json = line.substr(json_start);
 
           sequence_t anarci_sequence = parse_anarci_json_to_saltatlas_sequence(
-              anarci_json, idxs_for_distance_calculation, id,
-              use_missing_end_char, char_to_int_converter);
+              anarci_json, idxs_for_distance_calculation, id, false,
+              blosum62_char_to_int_converter);
+          // use missing end character = false
 
           id_vector.push_back(id);
           point_vector.push_back(anarci_sequence);

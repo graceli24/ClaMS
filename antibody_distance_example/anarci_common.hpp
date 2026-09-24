@@ -581,3 +581,113 @@ const auto get_anarci_identity_distance_lambda(
 
   return anarci_identity_distance_lambda;
 }
+
+// * Hard code BLOSUM62 substitution distance * //
+
+// Hard code in the BLOSUM62 substitution matrix instead of reading at run time
+std::vector<amino_acid_t> blosum62_char_to_int_converter{
+    255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 23,  255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 0,   20,  4,   3,   6,   13,  7,   8,   9,   255,
+    11,  10,  12,  2,   255, 14,  5,   1,   15,  16,  255, 19,  17,  22,  18,
+    21,  255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+    255, 255, 255, 255, 255, 255, 255, 255};
+
+std::vector<std::vector<sim_t>> blosum62_substitution_matrix{
+    {4,  -1, -2, -2, 0, -1, -1, 0, -2, -1, -1, -1,
+     -1, -2, -1, 1,  0, -3, -2, 0, -2, -1, 0,  -4},
+    {-1, 5,  0,  -2, -3, 1,  0,  -2, 0,  -3, -2, 2,
+     -1, -3, -2, -1, -1, -3, -2, -3, -1, 0,  -1, -4},
+    {-2, 0,  6,  1, -3, 0,  0,  0,  1, -3, -3, 0,
+     -2, -3, -2, 1, 0,  -4, -2, -3, 3, 0,  -1, -4},
+    {-2, -2, 1,  6, -3, 0,  2,  -1, -1, -3, -4, -1,
+     -3, -3, -1, 0, -1, -4, -3, -3, 4,  1,  -1, -4},
+    {0,  -3, -3, -3, 9,  -3, -4, -3, -3, -1, -1, -3,
+     -1, -2, -3, -1, -1, -2, -2, -1, -3, -3, -2, -4},
+    {-1, 1,  0,  0, -3, 5,  2,  -2, 0, -3, -2, 1,
+     0,  -3, -1, 0, -1, -2, -1, -2, 0, 3,  -1, -4},
+    {-1, 0,  0,  2, -4, 2,  5,  -2, 0, -3, -3, 1,
+     -2, -3, -1, 0, -1, -3, -2, -2, 1, 4,  -1, -4},
+    {0,  -2, 0,  -1, -3, -2, -2, 6,  -2, -4, -4, -2,
+     -3, -3, -2, 0,  -2, -2, -3, -3, -1, -2, -1, -4},
+    {-2, 0,  1,  -1, -3, 0,  0, -2, 8, -3, -3, -1,
+     -2, -1, -2, -1, -2, -2, 2, -3, 0, 0,  -1, -4},
+    {-1, -3, -3, -3, -1, -3, -3, -4, -3, 4,  2,  -3,
+     1,  0,  -3, -2, -1, -3, -1, 3,  -3, -3, -1, -4},
+    {-1, -2, -3, -4, -1, -2, -3, -4, -3, 2,  4,  -2,
+     2,  0,  -3, -2, -1, -2, -1, 1,  -4, -3, -1, -4},
+    {-1, 2,  0,  -1, -3, 1,  1,  -2, -1, -3, -2, 5,
+     -1, -3, -1, 0,  -1, -3, -2, -2, 0,  1,  -1, -4},
+    {-1, -1, -2, -3, -1, 0,  -2, -3, -2, 1,  2,  -1,
+     5,  0,  -2, -1, -1, -1, -1, 1,  -3, -1, -1, -4},
+    {-2, -3, -3, -3, -2, -3, -3, -3, -1, 0,  0,  -3,
+     0,  6,  -4, -2, -2, 1,  3,  -1, -3, -3, -1, -4},
+    {-1, -2, -2, -1, -3, -1, -1, -2, -2, -3, -3, -1,
+     -2, -4, 7,  -1, -1, -4, -3, -2, -2, -1, -2, -4},
+    {1,  -1, 1,  0, -1, 0,  0,  0,  -1, -2, -2, 0,
+     -1, -2, -1, 4, 1,  -3, -2, -2, 0,  0,  0,  -4},
+    {0,  -1, 0,  -1, -1, -1, -1, -2, -2, -1, -1, -1,
+     -1, -2, -1, 1,  5,  -2, -2, 0,  -1, -1, 0,  -4},
+    {-3, -3, -4, -4, -2, -2, -3, -2, -2, -3, -2, -3,
+     -1, 1,  -4, -3, -2, 11, 2,  -3, -4, -3, -2, -4},
+    {-2, -2, -2, -3, -2, -1, -2, -3, 2,  -1, -1, -2,
+     -1, 3,  -3, -2, -2, 2,  7,  -1, -3, -2, -1, -4},
+    {0, -3, -3, -3, -1, -2, -2, -3, -3, 3,  1,  -2,
+     1, -1, -2, -2, 0,  -3, -1, 4,  -3, -2, -1, -4},
+    {-2, -1, 3,  4, -3, 0,  1,  -1, 0, -3, -4, 0,
+     -3, -3, -2, 0, -1, -4, -3, -3, 4, 1,  -1, -4},
+    {-1, 0,  0,  1, -3, 3,  4,  -2, 0, -3, -3, 1,
+     -1, -3, -1, 0, -1, -3, -2, -2, 1, 4,  -1, -4},
+    {0,  -1, -1, -1, -2, -1, -1, -1, -1, -1, -1, -1,
+     -1, -1, -2, 0,  0,  -2, -1, -1, -1, -1, -1, -4},
+    {-4, -4, -4, -4, -4, -4, -4, -4, -4, -4, -4, -4,
+     -4, -4, -4, -4, -4, -4, -4, -4, -4, -4, -4, 1}};
+
+template <typename sequence_type>
+cls::distance_t anarci_substitution_distance(const sequence_type &seq1,
+                                             const sequence_type &seq2) {
+  // Get sequence lengths
+  const uint32_t m = seq1.size();  // m+1 rows in the alignment score matrix
+  const uint32_t n = seq2.size();  // n+1 columns in the alignment score matrix
+
+  // If either sequence is empty, their distance is the max value
+  if (m == 0 || n == 0) {
+    return std::numeric_limits<cls::distance_t>::max();
+  }
+
+  sim_t sim_score = 0;  // Similarity score
+
+  for (int i = 0; i < seq1.size(); ++i) {
+    // If both sequences have no residue, don't change score
+    if (seq1[i] == MISSING_LETTER && seq2[i] == MISSING_LETTER) {
+      // Do nothing
+    }
+    // If one sequence has no residue, but the other does, add the gap
+    // extension penalty
+    else if (seq1[i] == MISSING_LETTER || seq2[i] == MISSING_LETTER) {
+      sim_score -= GAP_EXTEND_COST;
+    }
+    // If both sequences have residues, add the substitution matrix
+    // score if possible. If for some reason this pair is not in the
+    // substitution matrix, again, add the gap extension cost
+    else {
+      try {
+        sim_score += blosum62_substitution_matrix[seq1[i]][seq2[i]];
+      } catch (...) {
+        sim_score -= GAP_EXTEND_COST;
+      }
+    }
+  }
+
+  if (sim_score <= 0) {
+    return std::numeric_limits<cls::distance_t>::max();
+  } else {
+    // Distance = similarity ^ (-1)
+    cls::distance_t distance =
+        std::pow(static_cast<cls::distance_t>(sim_score), -1.0);
+    return distance;
+  }
+}
