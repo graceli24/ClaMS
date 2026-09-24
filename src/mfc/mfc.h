@@ -188,11 +188,11 @@ std::vector<T> mfc(
       new_edges.push_back(new_element);
     }
 
-    w.cout0() << "Processed component " << i << " with size "
-              << components[i]->size()
-              << ". Time elapsed (s): " << timer.elapsed()
-              << std::endl;  // debug
-    std::cout.flush();
+    // w.cout0() << "Processed component " << i << " with size "
+    //           << components[i]->size()
+    //           << ". Time elapsed (s): " << timer.elapsed()
+    //           << std::endl;  // debug
+    // std::cout.flush();
   }
 
   timer.reset();  // debug
