@@ -37,6 +37,8 @@ void sort_and_process_mst_edges_into_maps(
     ygm::container::map<id_t, edge_contraction_info> &edge_contraction_map) {
   ygm::comm &comm = edge_endpoints_map.comm();
 
+  ygm::utility::timer timer;  // debug
+
   // Create a YGM array with the MST edges
   ygm::container::array<std::pair<distance_t, std::pair<id_t, id_t>>>
       edge_array(comm, mst_edge_vector);
@@ -45,6 +47,10 @@ void sort_and_process_mst_edges_into_maps(
   // Sort the edges
   edge_array.sort();
   comm.barrier();
+
+  comm.cout0() << "Time to put edges into YGM array and sort (s): "
+               << timer.elapsed() << std::endl;
+  timer.reset();
 
   // Fill in the edge endpoints and contraction map
   auto visit_array_lambda =
@@ -62,6 +68,9 @@ void sort_and_process_mst_edges_into_maps(
       };
   edge_array.for_all(visit_array_lambda);
   comm.barrier();
+
+  comm.cout0() << "Time to fill YGM edge maps (s): " << timer.elapsed()
+               << std::endl;
 }
 
 /**
