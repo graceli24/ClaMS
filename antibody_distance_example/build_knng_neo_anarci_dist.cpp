@@ -254,9 +254,12 @@ int main(int argc, char **argv) {
                  << positions_in_calc_ss.str() << std::endl;
 
     // Build kNNG using neo_dnnd
-    std::function<dist_t(const neo_dnnd_sequence_t &,
-                         const neo_dnnd_sequence_t &)>
-        anarci_distance = anarci_substitution_distance<neo_dnnd_sequence_t>;
+    // std::function<dist_t(const neo_dnnd_sequence_t &,
+    //                      const neo_dnnd_sequence_t &)>
+    //     anarci_distance = anarci_substitution_distance<neo_dnnd_sequence_t>;
+    static auto anarci_distance = [](const auto &seq1, const auto &seq2) {
+      return anarci_substitution_distance(seq1, seq2);
+    };
     neo_dnnd_t neo_dnnd(anarci_distance, comm, opt.verbose);
 
     comm.cout0() << "\n<<Read Points>>" << std::endl;

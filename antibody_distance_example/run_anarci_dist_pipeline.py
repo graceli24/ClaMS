@@ -46,7 +46,9 @@ def parse_options():
                         help='#of neighbors to have when constructing'
                              'a KNNG value.')
     parser.add_argument('--neodnnd_threads', type=int, default=2,
-                        help='Number of threads to use for NEO-DNND. Ignored if --neodnnd is not specified.')
+                        help='Number of threads to use for NEO-DNND.')
+    parser.add_argument('--neodnnd_replicate_rate', type=float, default=0.0,
+                        help='The replicate rate for NEO-DNND. See NEO-DNND\'s documentation for details.')
     parser.add_argument('--nng_r', type=float, default=0.5,
                         help='The r (sampling) parameter for KNNG construction.')
     parser.add_argument('--nng_delta', type=float, default=0.0001,
@@ -203,6 +205,7 @@ def gen_anarci_dist_bench_script(job_name, job_dir, work_dir,
                                     point_path, region_names,
                                     dnnd_exe, nng_k,
                                     nng_r, nng_delta,
+                                    neodnnd_threads, neodnnd_replicate_rate,
                                     pm_datastore_copy_exe,
                                     backup_knng,
                                     mfc_exe, mfc_lcc_sample_rate,
@@ -237,7 +240,9 @@ def gen_anarci_dist_bench_script(job_name, job_dir, work_dir,
             dnnd_ds_path = f"{work_dir}/knng_pm_datastore"
             dnnd_batch_size = 2 ** 25
             verbose_flag = '-v' if verbose else ''
-            dnnd_command = f"{dnnd_exe} {verbose_flag} -k {nng_k} -r {nng_r} -d {nng_delta} -o {dnnd_ds_path} -b {dnnd_batch_size} -p {region_names} {point_path}"
+            # This is not the best way to set the number of threads for NEO-DNND, but it is a simple way to do it for now.
+            dnnd_command = f'{dnnd_exe} -T {neodnnd_threads} -R {neodnnd_replicate_rate}'
+            dnnd_command = f"{dnnd_command} {verbose_flag} -k {nng_k} -r {nng_r} -d {nng_delta} -o {dnnd_ds_path} -b {dnnd_batch_size} -p {region_names} {point_path}"
             add_srun_cmd(num_tasks_per_node, dnnd_command, job_script)
             finish_stage(job_script)
             if backup_knng:
@@ -359,6 +364,8 @@ def main():
                                                 opts.region_names,
                                                 opts.dnnd_exe, opts.nng_k,
                                                 opts.nng_r, opts.nng_delta,
+                                                opts.neodnnd_threads, 
+                                                opts.neodnnd_replicate_rate,
                                                 opts.pm_datastore_copy_exe,
                                                 opts.backup_knng,
                                                 opts.mfc_exe, 

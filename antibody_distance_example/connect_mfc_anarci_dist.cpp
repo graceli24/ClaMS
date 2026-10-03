@@ -113,6 +113,7 @@ int main(int argc, char **argv) {
 
   ygm::utility::timer root_timer;
   {
+    ygm::utility::timer step_timer;
     cls::dist_pm_knng_t pm_knng(comm.get_mpi_comm());
     pm_knng.open(opt.pm_knng_datastore_path);
 
@@ -120,7 +121,6 @@ int main(int argc, char **argv) {
     static auto &pstore = pm_knng.get_point_store();
 
     comm.cout0() << "Opened" << std::endl;
-    std::cout.flush();
 
     ygm::utility::timer cc_timer;
 
@@ -132,14 +132,13 @@ int main(int argc, char **argv) {
     }
 
     comm.cout0() << "Read all points" << std::endl;
-    std::cout.flush();
+    comm.cout0() << "  Time to read points and add to disjoint set (s): "
+                 << step_timer.elapsed() << std::endl;
+    step_timer.reset();
 
     comm.barrier();
 
     disjoint_set.all_compress();
-    comm.cout0() << "Debug: disjoint_set.num_sets() = "
-                 << disjoint_set.num_sets() << std::endl;
-    std::cout.flush();
 
     std::set<cls::id_t> rep_set;
     disjoint_set.for_all(
@@ -155,8 +154,11 @@ int main(int argc, char **argv) {
         comm);
 
     comm.cout0() << "Found reps" << std::endl;
-    comm.cout0() << "Debug: number of reps = " << rep_set.size() << std::endl;
-    std::cout.flush();
+    comm.cout0() << "  Number of reps = " << rep_set.size() << std::endl;
+    comm.cout0()
+        << "  Time to compress disjoint set and get reps on all ranks (s): "
+        << step_timer.elapsed() << std::endl;
+    step_timer.reset();
 
     std::vector<std::shared_ptr<
         ygm::container::bag<std::pair<cls::id_t, cls::point_t>>>>
@@ -169,9 +171,6 @@ int main(int argc, char **argv) {
         *s_bag_map;
     s_bag_map = &bag_map;
 
-    comm.cout0() << "Debug: bag definitions done" << std::endl;  // debug
-    std::cout.flush();
-
     bags.reserve(rep_set.size());
     for (auto &rep : rep_set) {
       bags.emplace_back(
@@ -179,8 +178,9 @@ int main(int argc, char **argv) {
       bag_map.emplace(rep, bags.back());
     }
 
-    comm.cout0() << "Debug: created bag of bags" << std::endl;  // debug
-    std::cout.flush();
+    comm.cout0() << "  Time to initialize bags (s): " << step_timer.elapsed()
+                 << std::endl;
+    step_timer.reset();
 
     disjoint_set.for_all([&](const auto &p, const auto &rep) {
       comm.async(
@@ -198,16 +198,20 @@ int main(int argc, char **argv) {
 
     comm.barrier();
 
-    comm.cout0() << "Debug: assign points to correct bags"
-                 << std::endl;  // debug
-    std::cout.flush();
+    comm.cout0() << "  Time to add points to correct component bag (s): "
+                 << step_timer.elapsed() << std::endl;
+    step_timer.reset();
 
     for (auto &b : bags) {
       if (b->size() > (size_t)comm.size()) b->rebalance();
     }
 
+    comm.cout0() << "  Time to rebalance bags (s): " << step_timer.elapsed()
+                 << std::endl;
+
     comm.cout0() << "CC took (s): " << cc_timer.elapsed() << std::endl;
     comm.cout0() << "#of CCs: " << bags.size() << std::endl;
+    step_timer.reset();
 
     // Get the LCC component id and size on all ranks
     id_t        lcc_component_id = 0;
@@ -228,7 +232,7 @@ int main(int argc, char **argv) {
 
     // DEBUG write component sizes to file
     if (!opt.component_size_dump_file.empty()) {
-      cc_timer.reset();
+      step_timer.reset();
 
       comm.cout0() << "Getting component sizes" << std::endl;
       // (Component id, rank, component size, local size)
@@ -270,12 +274,12 @@ int main(int argc, char **argv) {
       }
 
       comm.barrier();
-      comm.cout0() << "Writing CC sizes took (s): " << cc_timer.elapsed()
+      comm.cout0() << "Writing CC sizes took (s): " << step_timer.elapsed()
                    << std::endl;
     }
 
     // Sample from the LCC if needed
-    if ((opt.lcc_sample_fraction < 1.0) & (lcc_size > comm.size() * 5)) {
+    if ((opt.lcc_sample_fraction < 1.0) & (lcc_size > comm.size() * 10)) {
       ygm::utility::timer sample_lcc_timer;
       comm.cout0() << "Sampling from the LCC. Sample fraction: "
                    << opt.lcc_sample_fraction << std::endl;
