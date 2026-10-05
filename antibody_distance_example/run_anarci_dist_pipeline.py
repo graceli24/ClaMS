@@ -149,7 +149,7 @@ def parse_options():
         options.clustering_exe = f'{options.build_dir}/src/clustering/run_distributed_hdbscan_clustering'
     if options.evaluator_exe is None:
         if options.ygm_cluster_eval:
-            options.evaluator_exe = f'{options.build_dir}/tpls/clams-cc/build/src/clustering_metrics'
+            options.evaluator_exe = f'{options.build_dir}/tpls/clams-cc/build/src/clustering_metrics_no_mi'
         else:
             options.evaluator_exe = f'{options.build_dir}/../script/benchmark/evaluate_clustering_quality.py'
 

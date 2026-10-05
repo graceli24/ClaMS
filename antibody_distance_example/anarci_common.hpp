@@ -35,8 +35,9 @@ amino_acid_char_t UNKNOWN_CHAR = 'X';
 int GAP_OPEN_COST   = 11;
 int GAP_EXTEND_COST = 1;
 
-// // Type for an ANARCI vector of characters
+// Type for an ANARCI vector of characters
 // using anarci_vector_t = saltatlas::feature_vector<amino_acid_char_t>;
+using anarci_vector_t = std::vector<amino_acid_char_t>;
 
 // Type for index positions in an ANARCI vector.
 // An OAS ANARCI vector has length 200.
@@ -184,6 +185,26 @@ std::map<std::string, anarci_idx_t> get_position_to_idx_map_from_region_name(
   }
 
   return position_to_idx_map;
+}
+
+/**
+ * @brief Parses an anarci vector of chars into a string for easy
+ * printing/reading
+ *
+ * @param anarci_vector_t Anarci vector of characters, e.g., the output of
+ * parse_anarci_json_to_anarci_vector.
+ */
+template <typename anarci_vect_type>
+std::string anarci_vector_to_string(const anarci_vect_type &anarci_vector) {
+  std::string formatted_anarci_str = "";
+  for (const amino_acid_char_t &amino_acid : anarci_vector) {
+    if (amino_acid == '\0') {
+      formatted_anarci_str += "-";
+    } else {
+      formatted_anarci_str += amino_acid;
+    }
+  }
+  return formatted_anarci_str;
 }
 
 /* Read the substitution matrix file */
@@ -430,6 +451,76 @@ sequence_t parse_anarci_json_to_saltatlas_sequence(
   }
 
   return anarci_sequence;
+}
+
+/**
+ * @brief Parses an anarci string in json format into a (possibly truncated)
+ * anarci vector of anarci_amino_acid_t
+ *
+ * @param anarci_json anarci numbering in json format.
+ *
+ * @param idx_vector A sorted std::vector<anarci_idx_t> of the indicies (0 to
+ * 199) of anarci numbering positions to consider. We only consider consider
+ * positions corresponding to those in in idx_vector. The function returns
+ * an anarci vector of the same size as idx_vector.
+ *
+ * @details Returns a vector with entries of anarci_amino_acid_t with the same
+ * size as idx_vector. Each position in the vector corresponds to a position in
+ * the anarci numbering scheme provided in idx_vector. If there is no amino acid
+ * in the position, a null \0 character is used. Missing amino acids at the ends
+ * of the full anarci vector (of size 200) are filled with '|' (that is we have
+ * '|' until the first amino acid, and after the last amino acid)
+ */
+anarci_vector_t parse_anarci_json_to_anarci_vector(
+    const std::string &anarci_json, const std::vector<anarci_idx_t> &idx_vector,
+    const id_t sequence_id) {
+  // Parse the JSON string using boost and access the oject
+  boost::json::object anarci_obj = boost::json::parse(anarci_json).as_object();
+
+  // Initialize a full anarci vector of length 200 initialized with null
+  // character. Read the anarci string into the full anarci vector using the
+  // full_position_to_idx_map
+  anarci_vector_t full_anarci_vector(200, '\0');
+
+  for (const auto &region : anarci_obj) {
+    auto region_obj = region.value().as_object();
+    for (const auto &position : region_obj) {
+      std::string amino_acid_str = position.value().as_string().c_str();
+      if (amino_acid_str.size() == 1) {
+        amino_acid_t amino_acid = amino_acid_str[0];
+        full_anarci_vector[full_position_to_idx_map[position.key()]] =
+            amino_acid;
+      } else {
+        std::cout << "In sequence id " << sequence_id
+                  << ", read value that's not a single amino acid char: "
+                  << amino_acid_str << std::endl;
+      }
+    }
+  }
+
+  // Set the missing residues at the ends of the sequence to '|'
+  for (int i = 0; i < 200; ++i) {
+    if (full_anarci_vector[i] == '\0') {
+      full_anarci_vector[i] = '|';
+    } else {
+      break;
+    }
+  }
+  for (int i = 199; i >= 0; --i) {
+    if (full_anarci_vector[i] == '\0') {
+      full_anarci_vector[i] = '|';
+    } else {
+      break;
+    }
+  }
+
+  // Initialize anarci vector and only use the positions in idx_vector
+  anarci_vector_t anarci_vector;
+  for (anarci_idx_t i : idx_vector) {
+    anarci_vector.push_back(full_anarci_vector[i]);
+  }
+
+  return anarci_vector;
 }
 
 /**
