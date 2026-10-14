@@ -76,7 +76,8 @@ struct option_t {
   std::filesystem::path pm_knng_datastore_path;
   std::string           bridge_edge_dump_file;
   std::filesystem::path component_size_dump_file;
-  float                 lcc_sample_fraction = 1.0;
+  float                 lcc_sample_fraction          = 1.0;
+  bool                  skip_small_component_bridges = false;
 };
 
 void show_usage(const char *prog_name) {
@@ -88,10 +89,15 @@ void show_usage(const char *prog_name) {
             << std::endl;
   std::cout << "  -b <path>: (Optional) File to dump the bridge edges."
             << std::endl;
-  std::cout << "  -s <float>:(Optional) Sample the largest connected "
+  std::cout << "  -s <float>: (Optional) Sample the largest connected "
                "component to only consider s fraction of points. Requires "
-               "0 < s < 1 and if no valid is s provided, defaults to s = 1, no "
-               "sampling of the LCC"
+               "0 <= s <= 1 and if no valid is s provided, defaults to "
+               "s = 1, no sampling of the LCC. If s = 0, then we sample "
+               "a single representative from the LCC."
+            << std::endl;
+  std::cout << "  -r <path>: (Optional) Skip checking bridge edges between "
+               "small components and just connect each small component "
+               "representative to the LCC."
             << std::endl;
 }
 
@@ -100,7 +106,7 @@ bool parse_option(int argc, char *argv[], option_t &opt) {
   opt.pm_knng_datastore_path.clear();
   std::string provided_region_option = "";
 
-  while ((n = getopt(argc, argv, "d:s:f:b:c:M:a:xH")) != -1) {
+  while ((n = getopt(argc, argv, "d:s:f:b:c:rxH")) != -1) {
     switch (n) {
       case 'd':
         opt.pm_knng_datastore_path = std::filesystem::path(optarg);
@@ -116,6 +122,10 @@ bool parse_option(int argc, char *argv[], option_t &opt) {
 
       case 'c':
         opt.component_size_dump_file = std::filesystem::path(optarg);
+        break;
+
+      case 'r':
+        opt.skip_small_component_bridges = true;
         break;
 
       default:
@@ -134,7 +144,7 @@ bool parse_option(int argc, char *argv[], option_t &opt) {
   }
   if ((opt.lcc_sample_fraction < 0) | (opt.lcc_sample_fraction > 1)) {
     std::cerr << "Provided LCC sample fraction " << opt.lcc_sample_fraction
-              << " is not strictly between 0 and 1. Defaulting to 1 and not "
+              << " is not between 0 and 1. Defaulting to 1 and not "
                  "sampling the LCC."
               << std::endl;
     opt.lcc_sample_fraction = 1.0;
@@ -331,7 +341,8 @@ int main(int argc, char **argv) {
     }
 
     // Sample from the LCC if needed
-    if ((opt.lcc_sample_fraction < 1.0) & (lcc_size > comm.size())) {
+    if ((0 < opt.lcc_sample_fraction) & (opt.lcc_sample_fraction < 1.0) &
+        (lcc_size > comm.size())) {
       ygm::utility::timer sample_lcc_timer;
       comm.cout0() << "Sampling from the LCC. Sample fraction: "
                    << opt.lcc_sample_fraction << std::endl;
@@ -499,46 +510,64 @@ int main(int argc, char **argv) {
           continue;
         }
 
-        cls::distance_t min_dist = std::numeric_limits<cls::distance_t>::max();
-
-        cls::id_t    best_point_id_lcc = 0;
-        cls::id_t    point_id_i        = reps[i].first;
-        cls::point_t point_i           = reps[i].second;
-
-        for (auto ite = bags[lcc_component_id]->local_begin();
-             ite != bags[lcc_component_id]->local_end(); ite++) {
-          auto d = anarci_substitution_distance(point_i, (*ite).second);
-          if (d < min_dist) {
-            min_dist          = d;
-            best_point_id_lcc = (*ite).first;
-          }
+        // If we just consider the LCC rep, then no need to do multiple distance
+        // checks, just get each edge from LCC rep to small component rep
+        if (opt.lcc_sample_fraction == 0) {
+          auto d = anarci_substitution_distance(reps[lcc_component_id].second,
+                                                reps[i].second);
+          std::pair<cls::id_t, cls::id_t> component_pair{
+              std::min(i, lcc_component_id), std::max(i, lcc_component_id)};
+          bridge_edge_map.async_insert(
+              component_pair,
+              std::make_tuple(reps[i].first, reps[lcc_component_id].first, d));
         }
 
-        // See if the local best bridge edge is better than the global one
-        // stored for this pair of small component and lcc. Always store
-        // component pairs as (smaller id, larger id)
-        std::pair<cls::id_t, cls::id_t> component_pair{
-            std::min(i, lcc_component_id), std::max(i, lcc_component_id)};
-        std::tuple<cls::id_t, cls::id_t, cls::distance_t>
-            local_best_bridge_edge{point_id_i, best_point_id_lcc, min_dist};
-        bridge_edge_map.async_visit(
-            component_pair,
-            [](const std::pair<cls::id_t, cls::id_t> &pair_name,
-               std::tuple<cls::id_t, cls::id_t, cls::distance_t>
-                   &best_bridge_edge,
-               const std::tuple<cls::id_t, cls::id_t, cls::distance_t>
-                   &new_bridge_edge) {
-              // Assume that there are no 0-distance bridge edges. If this is
-              // the first time we visit the bridge edge map, the best distance
-              // will  0 and we can store our new edge as the best so far
-              if (std::get<2>(best_bridge_edge) == 0) {
-                best_bridge_edge = new_bridge_edge;
-              } else if (std::get<2>(new_bridge_edge) <
-                         std::get<2>(best_bridge_edge)) {
-                best_bridge_edge = new_bridge_edge;
-              }
-            },
-            local_best_bridge_edge);
+        // Otherwise, find the best bridge edge between each small component rep
+        // and the (sampled) LCC
+        else {
+          cls::distance_t min_dist =
+              std::numeric_limits<cls::distance_t>::max();
+
+          cls::id_t    best_point_id_lcc = 0;
+          cls::id_t    point_id_i        = reps[i].first;
+          cls::point_t point_i           = reps[i].second;
+
+          for (auto ite = bags[lcc_component_id]->local_begin();
+               ite != bags[lcc_component_id]->local_end(); ite++) {
+            auto d = anarci_substitution_distance(point_i, (*ite).second);
+            if (d < min_dist) {
+              min_dist          = d;
+              best_point_id_lcc = (*ite).first;
+            }
+          }
+
+          // See if the local best bridge edge is better than the global one
+          // stored for this pair of small component and lcc. Always store
+          // component pairs as (smaller id, larger id)
+          std::pair<cls::id_t, cls::id_t> component_pair{
+              std::min(i, lcc_component_id), std::max(i, lcc_component_id)};
+          std::tuple<cls::id_t, cls::id_t, cls::distance_t>
+              local_best_bridge_edge{point_id_i, best_point_id_lcc, min_dist};
+          bridge_edge_map.async_visit(
+              component_pair,
+              [](const std::pair<cls::id_t, cls::id_t> &pair_name,
+                 std::tuple<cls::id_t, cls::id_t, cls::distance_t>
+                     &best_bridge_edge,
+                 const std::tuple<cls::id_t, cls::id_t, cls::distance_t>
+                     &new_bridge_edge) {
+                // Assume that there are no 0-distance bridge edges. If this is
+                // the first time we visit the bridge edge map, the best
+                // distance will  0 and we can store our new edge as the best so
+                // far
+                if (std::get<2>(best_bridge_edge) == 0) {
+                  best_bridge_edge = new_bridge_edge;
+                } else if (std::get<2>(new_bridge_edge) <
+                           std::get<2>(best_bridge_edge)) {
+                  best_bridge_edge = new_bridge_edge;
+                }
+              },
+              local_best_bridge_edge);
+        }
       }
 
       comm.cout0() << "Done getting bridge edges between small components and "
@@ -546,62 +575,65 @@ int main(int argc, char **argv) {
                    << step_timer.elapsed() << std::endl;
       step_timer.reset();
 
-      // Make a local copy of weight of the best bridge edges to the LCC
-      std::vector<cls::distance_t> dist_to_lcc_vector(num_components);
-      for (const auto &[component_pair, bridge_edge] : bridge_edge_map) {
-        cc_id_t small_component_id = component_pair.first;
-        if (component_pair.first == lcc_component_id) {
-          small_component_id = component_pair.second;
+      if (!opt.skip_small_component_bridges) {
+        // Make a local copy of weight of the best bridge edges to the LCC
+        std::vector<cls::distance_t> dist_to_lcc_vector(num_components);
+        for (const auto &[component_pair, bridge_edge] : bridge_edge_map) {
+          cc_id_t small_component_id = component_pair.first;
+          if (component_pair.first == lcc_component_id) {
+            small_component_id = component_pair.second;
+          }
+          dist_to_lcc_vector.at(small_component_id) = std::get<2>(bridge_edge);
         }
-        dist_to_lcc_vector.at(small_component_id) = std::get<2>(bridge_edge);
-      }
-      comm.barrier();
-      MPI_Allreduce(MPI_IN_PLACE, dist_to_lcc_vector.data(), num_components,
-                    mpi_distance_type(), MPI_MAX, comm.get_mpi_comm());
+        comm.barrier();
+        MPI_Allreduce(MPI_IN_PLACE, dist_to_lcc_vector.data(), num_components,
+                      mpi_distance_type(), MPI_MAX, comm.get_mpi_comm());
 
-      comm.cout0()
-          << "Created local copies of LCC bridge edge weights. Time (s): "
-          << step_timer.elapsed() << std::endl;
-      step_timer.reset();
+        comm.cout0()
+            << "Created local copies of LCC bridge edge weights. Time (s): "
+            << step_timer.elapsed() << std::endl;
+        step_timer.reset();
 
-      // Loop over every ordered pair of small components and check the rep
-      // bridge edge - only store these best bridge edges if they have distance
-      // <= the better of the two small component bridge edges to the LCC
-      for (cc_id_t i = 0; i < num_components; i++) {
-        if ((i != lcc_component_id) & (i % comm.size() == comm.rank())) {
-          for (cc_id_t j = 0; j < num_components; j++) {
-            if ((i == j) | (j == lcc_component_id)) {
-              continue;
-            }
+        // Loop over every ordered pair of small components and check the rep
+        // bridge edge - only store these best bridge edges if they have
+        // distance
+        // <= the better of the two small component bridge edges to the LCC
+        for (cc_id_t i = 0; i < num_components; i++) {
+          if ((i != lcc_component_id) & (i % comm.size() == comm.rank())) {
+            for (cc_id_t j = 0; j < num_components; j++) {
+              if ((i == j) | (j == lcc_component_id)) {
+                continue;
+              }
 
-            cls::id_t    point_id_i = reps[i].first;
-            cls::point_t point_i    = reps[i].second;
-            cls::id_t    point_id_j = reps[j].first;
-            cls::point_t point_j    = reps[j].second;
+              cls::id_t    point_id_i = reps[i].first;
+              cls::point_t point_i    = reps[i].second;
+              cls::id_t    point_id_j = reps[j].first;
+              cls::point_t point_j    = reps[j].second;
 
-            cls::distance_t rep_dist =
-                anarci_substitution_distance(point_i, point_j);
+              cls::distance_t rep_dist =
+                  anarci_substitution_distance(point_i, point_j);
 
-            // See if the local best bridge edge is better than the global one
-            // stored for this component pair - Only consider this bridge edge
-            // if has distance smaller than at least one of the LCC bridge edges
-            // for this component pair
-            if ((rep_dist <= dist_to_lcc_vector.at(i)) |
-                (rep_dist <= dist_to_lcc_vector.at(j))) {
-              std::pair<cls::id_t, cls::id_t> component_pair{std::min(i, j),
-                                                             std::max(i, j)};
-              std::tuple<cls::id_t, cls::id_t, cls::distance_t> bridge_edge{
-                  point_id_i, point_id_j, rep_dist};
-              bridge_edge_map.async_insert(component_pair, bridge_edge);
+              // See if the local best bridge edge is better than the global one
+              // stored for this component pair - Only consider this bridge edge
+              // if has distance smaller than at least one of the LCC bridge
+              // edges for this component pair
+              if ((rep_dist <= dist_to_lcc_vector.at(i)) |
+                  (rep_dist <= dist_to_lcc_vector.at(j))) {
+                std::pair<cls::id_t, cls::id_t> component_pair{std::min(i, j),
+                                                               std::max(i, j)};
+                std::tuple<cls::id_t, cls::id_t, cls::distance_t> bridge_edge{
+                    point_id_i, point_id_j, rep_dist};
+                bridge_edge_map.async_insert(component_pair, bridge_edge);
+              }
             }
           }
         }
-      }
-      comm.barrier();
+        comm.barrier();
 
-      comm.cout0()
-          << "Got bridge edges between all small components. Time (s): "
-          << step_timer.elapsed() << std::endl;
+        comm.cout0()
+            << "Got bridge edges between all small components. Time (s): "
+            << step_timer.elapsed() << std::endl;
+      }
     }
 
     // Add the bridge edges found to the knng

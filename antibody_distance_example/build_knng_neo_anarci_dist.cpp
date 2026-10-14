@@ -233,6 +233,7 @@ int main(int argc, char **argv) {
       return 1;
     }
 
+    ygm::utility::timer total_timer;
     ygm::utility::timer read_data_timer;
 
     // Get the position to index map for the indicies in our distance
@@ -297,6 +298,11 @@ int main(int argc, char **argv) {
 
           id_vector.push_back(id);
           point_vector.push_back(anarci_sequence);
+
+          if (anarci_sequence.size() != 200) {
+            std::cout << "Point " << id << " has sequence that's not length 200"
+                      << std::endl;  // debug
+          }
         };
         input_line_parser.for_all(parse_id_sequence_line_lambda);
         ygm_comm.barrier();
@@ -326,6 +332,8 @@ int main(int argc, char **argv) {
       pm_knng.create(opt.scratchpath);
       ygm::comm ygm_comm(comm.comm());
 
+      comm.cout0() << "Created scratchpad" << std::endl;  // debug
+
       static auto &ref_knng = pm_knng.get_knng();
       for (const auto &pair : knng) {
         const auto src = pair.first;
@@ -342,6 +350,8 @@ int main(int argc, char **argv) {
       }
       knng.clear();
       ygm_comm.barrier();
+
+      comm.cout0() << "Copied knng to pm_knng" << std::endl;  // debug
 
       static auto &ref_pstore = pm_knng.get_point_store();
       for (const auto &point : neo_dnnd.local_points()) {
@@ -397,6 +407,9 @@ int main(int argc, char **argv) {
       }
     }
     comm.barrier();
+
+    comm.cout0() << "Entire program took (s): " << total_timer.elapsed()
+                 << std::endl;
   }
   ::MPI_Finalize();
 
