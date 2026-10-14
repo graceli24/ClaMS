@@ -412,6 +412,11 @@ int main(int argc, char *argv[]) {
     fill_init_min_incident_edge_map(min_incident_edge_map,
                                     edge_endpoints_array);
     incidence_map_time += sw_step.elapsed().count();
+    if (opt.verbose && world.rank() == 0) {
+      spdlog::info(
+          "  Time to initialize and fill min incident edge map (s): {:.3f}",
+          sw_step);
+    }
 
     // Max possible number of contraction rounds is log2(number of edges in
     // MST)
