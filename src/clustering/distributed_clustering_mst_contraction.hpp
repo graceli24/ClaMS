@@ -93,7 +93,7 @@ void fill_init_min_incident_edge_map(
         }
       };
 
-  // Fill the initial incidence array from the original MST edges
+  // Fill the initial incidence map from the original MST edges
   auto fill_init_min_incident_edge_map =
       [&min_incident_edge_map](const id_t            &edge_id,
                                std::pair<id_t, id_t> &edge_endpoints) {
