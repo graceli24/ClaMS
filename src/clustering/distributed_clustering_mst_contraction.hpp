@@ -69,8 +69,7 @@ void sort_and_process_mst_edges_into_maps(
 }
 
 /**
- * @brief Fill the initial min_incident_edge_map from the
- edge_endpoints_array
+ * @brief Fill the initial min_incident_edge_map from the edge_endpoints_array
  *
  * @param edge_endpoints_array YGM array of edge id -> (edge_endpoint1,
  * edge_endpoint2)
@@ -165,11 +164,9 @@ void contract_edges(
               edge_info.endpoint_supernode_reps.first,
               edge_info.endpoint_supernode_reps.second);
         };
-        if (min_incident_edge_id != std::numeric_limits<id_t>::max()) {
-          edge_contraction_array.async_visit(min_incident_edge_id,
-                                             add_edge_to_djset_lambda,
-                                             tree_components_djset_ptr);
-        }
+        edge_contraction_array.async_visit(min_incident_edge_id,
+                                           add_edge_to_djset_lambda,
+                                           tree_components_djset_ptr);
         // Set this supernode as the dendrogram child of the min incident edge
         if (round >= 2) {
           alpha_edge_map_ptr->async_visit(
@@ -178,65 +175,6 @@ void contract_edges(
         }
       };
   min_incident_edge_map.for_all(contract_edges_lambda);
-  comm.barrier();
-}
-
-/**
- * @brief Find all MST edges to contract this round and add to disjoint set
- *
- * @param _round The round of MST contraction we're on.
- * @param min_incident_edge_map YGM map of supernode representative ->
- * min incident edge id.
- * @param edge_contraction_array YGM array of edge id -> edge_contraction_info
- * @param alpha_edge_map_ptr Pointer to YGM map of alpha edge id ->
- * alpha_edge_info. Alpha edges are ones that are not contracted in the first
- * round. As we contract alpha edges, we update their child supernodes in the
- * dendrogram.
- * @param tree_components_djset YGM disjoint_set for getting connected
- * components after edge contraction.
- */
-void contract_edges_first_round(
-    ygm::container::array<id_t>                  &min_incident_edge_array,
-    ygm::container::array<edge_contraction_info> &edge_contraction_array,
-    ygm::ygm_ptr<ygm::container::map<id_t, alpha_edge_info>> alpha_edge_map_ptr,
-    ygm::container::disjoint_set<id_t> &tree_components_djset) {
-  ygm::comm &comm                      = edge_contraction_array.comm();
-  auto       tree_components_djset_ptr = tree_components_djset.get_ygm_ptr();
-
-  [[maybe_unused]] static auto add_dendrogram_child_lambda =
-      []([[maybe_unused]] const id_t &edge_id, alpha_edge_info &info,
-         supernode_t new_child) {
-        if (info.dendrogram_children[0] == BLANK_SUPERNODE) {
-          info.dendrogram_children[0] = new_child;
-        } else {
-          info.dendrogram_children[1] = new_child;
-        }
-      };
-
-  auto contract_edges_lambda = [&edge_contraction_array, alpha_edge_map_ptr,
-                                tree_components_djset_ptr](
-                                   [[maybe_unused]] const id_t &supernode_rep,
-                                   const id_t &min_incident_edge_id) {
-    // The shortest edge incident to each supernode is contracted
-
-    // Add the contracted edge to the disjoint set and set as
-    // contracted For an edge between supernodes (rep1, round-1) and
-    // (rep2, round-1), we add the rep1-rep2 edge to the disjoint set
-    auto add_edge_to_djset_lambda = []([[maybe_unused]] const id_t &edge_id,
-                                       edge_contraction_info       &edge_info,
-                                       auto tree_components_djset_ptr) {
-      edge_info.contraction_round = 1;
-      tree_components_djset_ptr->async_union(
-          edge_info.endpoint_supernode_reps.first,
-          edge_info.endpoint_supernode_reps.second);
-    };
-    if (min_incident_edge_id != std::numeric_limits<id_t>::max()) {
-      edge_contraction_array.async_visit(min_incident_edge_id,
-                                         add_edge_to_djset_lambda,
-                                         tree_components_djset_ptr);
-    }
-  };
-  min_incident_edge_array.for_all(contract_edges_lambda);
   comm.barrier();
 }
 

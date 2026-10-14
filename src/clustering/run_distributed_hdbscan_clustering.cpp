@@ -193,8 +193,6 @@ int main(int argc, char *argv[]) {
               mst_edge_vector;
   static id_t local_num_edges_read;
   local_num_edges_read = 0;
-  static id_t local_max_point_id;
-  local_max_point_id = 0;
 
   if (opt.metall_mst) {
     if (world.rank() == 0) {
@@ -227,13 +225,6 @@ int main(int argc, char *argv[]) {
                          std::make_pair((*input_mst_edges)[i].ids[0],
                                         (*input_mst_edges)[i].ids[1]));
       mst_edge_vector.push_back(array_item);
-
-      if ((*input_mst_edges)[i].ids[0] > local_max_point_id) {
-        local_max_point_id = (*input_mst_edges)[i].ids[0];
-      }
-      if ((*input_mst_edges)[i].ids[1] > local_max_point_id) {
-        local_max_point_id = (*input_mst_edges)[i].ids[1];
-      }
     }
     local_num_edges_read = mst_edge_vector.size();
 
@@ -261,12 +252,6 @@ int main(int argc, char *argv[]) {
             distance_t        dist;
             ss >> edge_id >> node1 >> node2 >> dist;
             ++local_num_edges_read;
-            if (node1 > local_max_point_id) {
-              local_max_point_id = node1;
-            }
-            if (node2 > local_max_point_id) {
-              local_max_point_id = node2;
-            }
           } catch (...) {
             std::cout << "Error reading mst line: " << line << std::endl;
           }
@@ -300,12 +285,6 @@ int main(int argc, char *argv[]) {
             std::pair<distance_t, std::pair<id_t, id_t>> array_item =
                 std::make_pair(dist, std::make_pair(node1, node2));
             mst_edge_vector.push_back(array_item);
-            if (node1 > local_max_point_id) {
-              local_max_point_id = node1;
-            }
-            if (node2 > local_max_point_id) {
-              local_max_point_id = node2;
-            }
           } catch (...) {
             std::cout << "Error reading mst line: " << line << std::endl;
           }
@@ -328,7 +307,6 @@ int main(int argc, char *argv[]) {
   sw_step.reset();
 
   id_t total_num_edges_read = ygm::sum(local_num_edges_read, world);
-  id_t max_point_id         = ygm::max(local_max_point_id, world);
 
   // Initialize edge array of basic endpoints
   // and edge contraction array with edge_contraction_info
@@ -391,7 +369,6 @@ int main(int argc, char *argv[]) {
   ss << "  Number of MST edges: " << edge_endpoints_array.size();
   if (world.rank() == 0) {
     spdlog::info(ss.str());
-    spdlog::info("  Max point id: {}", max_point_id);
     spdlog::info(" Time to ingest MST edges (s): {:.3f}", sw_round);
   }
 
