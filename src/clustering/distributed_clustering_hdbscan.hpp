@@ -2037,6 +2037,9 @@ void write_cluster_labels_single_pm(
   const size_t num_points = point_to_cluster_id_map.size();
 
   MPI_Comm mpi_comm = comm.get_mpi_comm();
+
+  ygm::utility::timer timer;  // debug
+
   if (comm.rank() == 0) {
     metall::manager manager(metall::create_only, output_filename);
     auto            cluster_id_table = manager.construct<pm_cluster_id_table_t>(
@@ -2047,7 +2050,8 @@ void write_cluster_labels_single_pm(
     for (size_t i = 0; i < point_ids.size(); ++i) {
       cluster_id_table->emplace(point_ids.at(i), cluster_labels.at(i));
     }
-    std::cout << "Wrote labels from rank 0" << std::endl;
+    std::cout << "Wrote labels from rank 0. Time elapsed (s): "
+              << timer.elapsed() << std::endl;  // debug
 
     // Write edges for all other ranks
     for (int r = 1; r < comm.size(); ++r) {
@@ -2058,7 +2062,9 @@ void write_cluster_labels_single_pm(
       for (size_t i = 0; i < remote_ids.size(); ++i) {
         cluster_id_table->emplace(remote_ids.at(i), remote_labels.at(i));
       }
-      std::cout << "Wrote labels from rank " << r << std::endl;
+      std::cout << "Wrote labels from rank " << r
+                << ". Time elapsed (s): " << timer.elapsed()
+                << std::endl;  // debug
     }
 
   } else {

@@ -423,7 +423,8 @@ int main(int argc, char *argv[]) {
 
     // Incidence map of supernode rep (we know the round, so we drop it) ->
     // vector of all incident edge ids
-    ygm::container::map<id_t, id_t> min_incident_edge_map(world);
+    ygm::container::map<id_t, id_t> min_incident_edge_map(
+        world, std::numeric_limits<id_t>::max());
 
     // Create a disjoint set
     ygm::container::disjoint_set<id_t> tree_components_djset(world);
@@ -437,8 +438,8 @@ int main(int argc, char *argv[]) {
     //               << sw_step.elapsed().count() << std::endl;
     // fill_init_min_incident_edge_array(init_min_incident_edge_array,
     //                                   edge_endpoints_array);
-    // fill_init_min_incident_edge_map(min_incident_edge_map,
-    // edge_endpoints_array, max_point_id);
+    // fill_init_min_incident_edge_map_v2(min_incident_edge_map,
+    //                                    edge_endpoints_array, max_point_id);
     fill_init_min_incident_edge_map(min_incident_edge_map,
                                     edge_endpoints_array);
 

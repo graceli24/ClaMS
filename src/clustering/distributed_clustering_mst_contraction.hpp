@@ -226,9 +226,10 @@ void sort_and_process_mst_edges_into_maps(
  * min incident edge id. Initially, each supernode representative is an
  * original node in the graph.
  */
-void fill_init_min_incident_edge_map(
+void fill_init_min_incident_edge_map_v2(
     ygm::container::map<id_t, id_t>              &min_incident_edge_map,
-    ygm::container::array<std::pair<id_t, id_t>> &edge_endpoints_array) {
+    ygm::container::array<std::pair<id_t, id_t>> &edge_endpoints_array,
+    id_t                                          max_point_id) {
   ygm::comm &comm = edge_endpoints_array.comm();
 
   static auto check_incident_edge_lambda =
@@ -236,12 +237,25 @@ void fill_init_min_incident_edge_map(
          const id_t &edge_id) {
         if (edge_id < min_incident_edge_id) {
           min_incident_edge_id = edge_id;
-        } else if (min_incident_edge_id == 0) {
-          min_incident_edge_id = edge_id;
         }
       };
 
   ygm::utility::timer timer;  // debug
+
+  for (id_t id = 0; id <= max_point_id; ++id) {
+    int owner = min_incident_edge_map.partitioner.owner(id);
+    if (owner == comm.rank()) {
+      min_incident_edge_map.local_insert(id, std::numeric_limits<id_t>::max());
+    }
+  }
+  comm.barrier();
+
+  comm.cout0() << "Time to put nodes in min incident map: " << timer.elapsed()
+               << std::endl;  // debug
+  comm.cout0() << "max point id = " << max_point_id << std::endl;
+  comm.cout0() << "min_incident_edge_map.size() = "
+               << min_incident_edge_map.size() << std::endl;
+  timer.reset();
 
   // Fill the initial incidence array from the original MST edges
   auto fill_init_min_incident_edge_map =
@@ -255,12 +269,172 @@ void fill_init_min_incident_edge_map(
   edge_endpoints_array.for_all(fill_init_min_incident_edge_map);
   comm.barrier();
 
-  // Since map values initialize to 0, set the two endpoints of edge 0 to have
-  // min incident edge 0 at the end
-  if (comm.rank() == 0) {
-    edge_endpoints_array.async_visit(0, fill_init_min_incident_edge_map);
+  comm.cout0() << "Time to fill initial min incident map: " << timer.elapsed()
+               << std::endl;  // debug
+  timer.reset();
+
+  // Remove any extra nodes
+  id_t num_points_erased;
+  num_points_erased = 0;
+  std::vector<id_t> points_to_erase;
+  for (const auto &[point_id, edge_id] : min_incident_edge_map) {
+    if (edge_id == std::numeric_limits<id_t>::max()) {
+      points_to_erase.push_back(point_id);
+      std::cout << comm.rank() << " - " << point_id << std::endl;
+      ++num_points_erased;
+    }
   }
   comm.barrier();
+  for (id_t point_id : points_to_erase) {
+    min_incident_edge_map.local_erase(point_id);
+  }
+  comm.barrier();
+
+  comm.cout0() << "Time to check and delete any extraneous points: "
+               << timer.elapsed() << std::endl;  // debug
+  comm.cout0() << "Number of extraneous points deleted: "
+               << ygm::sum(num_points_erased, comm) << std::endl;  // debug
+  // comm.cout0() << "Number of extraneous points deleted: "
+  //              << ygm::sum(points_to_erase.size(), comm) << std::endl;  //
+  //              debug
+  comm.cout0() << "min_incident_edge_map.size = "
+               << min_incident_edge_map.size() << std::endl;
+  timer.reset();
+}
+
+/**
+ * @brief Fill the initial min_incident_edge_map from the
+ edge_endpoints_array
+ *
+ * @param edge_endpoints_array YGM array of edge id -> (edge_endpoint1,
+ * edge_endpoint2)
+ * @param min_incident_edge_map An empty YGM map of supernode representative
+ ->
+ * min incident edge id. Initially, each supernode representative is an
+ * original node in the graph.
+ */
+void fill_init_min_incident_edge_map(
+    ygm::container::map<id_t, id_t>              &min_incident_edge_map,
+    ygm::container::array<std::pair<id_t, id_t>> &edge_endpoints_array) {
+  ygm::comm &comm = edge_endpoints_array.comm();
+
+  static uint32_t num_visits_received;
+  num_visits_received = 0;
+
+  static auto check_incident_edge_lambda =
+      []([[maybe_unused]] const id_t &supernode_rep, id_t &min_incident_edge_id,
+         const id_t &edge_id) {
+        ++num_visits_received;
+        if (edge_id < min_incident_edge_id) {
+          min_incident_edge_id = edge_id;
+        }
+      };
+
+  ygm::utility::timer timer;  // debug
+
+  // // Fill the initial incidence array from the original MST edges
+  // std::unordered_set<id_t> nodes_visited_on_same_rank;
+  // uint32_t                 num_visits_on_same_rank = 0;
+  // std::unordered_set<id_t> nodes_visited_on_different_rank;
+  // uint32_t                 num_visits_on_different_rank = 0;
+  // uint32_t                 num_edges                    = 0;
+  // for (const auto &[edge_id, edge_endpoints] : edge_endpoints_array) {
+  //   ++num_edges;
+  //   for (const id_t &endpoint : {edge_endpoints.first,
+  //   edge_endpoints.second}) {
+  //     int owner = min_incident_edge_map.partitioner.owner(endpoint);
+  //     if (owner == comm.rank()) {
+  //       min_incident_edge_map.local_visit(endpoint,
+  //       check_incident_edge_lambda,
+  //                                         edge_id);
+  //       ++num_visits_on_same_rank;
+  //       nodes_visited_on_same_rank.insert(endpoint);
+  //     } else {
+  //       min_incident_edge_map.async_visit(endpoint,
+  //       check_incident_edge_lambda,
+  //                                         edge_id);
+  //       ++num_visits_on_different_rank;
+  //       nodes_visited_on_different_rank.insert(endpoint);
+  //     }
+  //   }
+  // }
+  // comm.barrier();
+  // uint32_t num_nodes_visited_on_same_rank =
+  // nodes_visited_on_same_rank.size(); uint32_t
+  // num_nodes_visited_on_different_rank =
+  //     nodes_visited_on_different_rank.size();
+
+  static uint32_t num_edges;
+  num_edges = 0;
+  auto fill_init_min_incident_edge_map =
+      [&min_incident_edge_map](const id_t            &edge_id,
+                               std::pair<id_t, id_t> &edge_endpoints) {
+        ++num_edges;
+        min_incident_edge_map.async_visit(edge_endpoints.first,
+                                          check_incident_edge_lambda, edge_id);
+        min_incident_edge_map.async_visit(edge_endpoints.second,
+                                          check_incident_edge_lambda, edge_id);
+      };
+  edge_endpoints_array.for_all(fill_init_min_incident_edge_map);
+  comm.barrier();
+
+  comm.cout0() << "Number of edges: sum = " << ygm::sum(num_edges, comm)
+               << ", max = " << ygm::max(num_edges, comm)
+               << ", min = " << ygm::min(num_edges, comm) << std::endl;
+
+  // comm.cout0() << "Num visits on the same rank: sum = "
+  //              << ygm::sum(num_visits_on_same_rank, comm)
+  //              << ", max = " << ygm::max(num_visits_on_same_rank, comm)
+  //              << ", min = " << ygm::min(num_visits_on_same_rank, comm)
+  //              << std::endl;
+
+  // comm.cout0() << "Unique nodes visited on the same rank: sum = "
+  //              << ygm::sum(num_nodes_visited_on_same_rank, comm)
+  //              << ", max = " << ygm::max(num_nodes_visited_on_same_rank,
+  //              comm)
+  //              << ", min = " << ygm::min(num_nodes_visited_on_same_rank,
+  //              comm)
+  //              << std::endl;
+
+  // comm.cout0() << "Num visits to a different rank: sum = "
+  //              << ygm::sum(num_visits_on_different_rank, comm)
+  //              << ", max = " << ygm::max(num_visits_on_different_rank, comm)
+  //              << ", min = " << ygm::min(num_visits_on_different_rank, comm)
+  //              << std::endl;
+
+  // comm.cout0() << "Unique nodes visited on a different rank: sum = "
+  //              << ygm::sum(num_nodes_visited_on_different_rank, comm)
+  //              << ", max = "
+  //              << ygm::max(num_nodes_visited_on_different_rank, comm)
+  //              << ", min = "
+  //              << ygm::min(num_nodes_visited_on_different_rank, comm)
+  //              << std::endl;
+
+  comm.cout0() << "Number of messages received: sum = "
+               << ygm::sum(num_visits_received, comm)
+               << ", max = " << ygm::max(num_visits_received, comm)
+               << ", min = " << ygm::min(num_visits_received, comm)
+               << std::endl;
+
+  // std::cout << "Rank " << comm.rank()
+  //           << ": num_visits_on_same_rank = " << num_visits_on_same_rank
+  //           << " to " << nodes_visited_on_same_rank.size()
+  //           << " nodes. num_visits_on_different_rank = "
+  //           << num_visits_on_different_rank << " to "
+  //           << nodes_visited_on_different_rank.size() << std::endl;
+
+  // auto fill_init_min_incident_edge_map =
+  //     [&min_incident_edge_map](const id_t            &edge_id,
+  //                              std::pair<id_t, id_t> &edge_endpoints) {
+  //       min_incident_edge_map.async_visit(edge_endpoints.first,
+  //                                         check_incident_edge_lambda,
+  //                                         edge_id);
+  //       min_incident_edge_map.async_visit(edge_endpoints.second,
+  //                                         check_incident_edge_lambda,
+  //                                         edge_id);
+  //     };
+  // edge_endpoints_array.for_all(fill_init_min_incident_edge_map);
+  // comm.barrier();
 
   comm.cout0() << "Time to fill initial min incident map: " << timer.elapsed()
                << std::endl;  // debug
