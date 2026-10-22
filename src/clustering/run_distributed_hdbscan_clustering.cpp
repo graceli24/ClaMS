@@ -165,11 +165,12 @@ int main(int argc, char *argv[]) {
   spdlog::stopwatch sw_step;
 
   // Phase 1 times
-  float incidence_map_time  = 0.0;
-  float contract_edges_time = 0.0;
-  float get_components_time = 0.0;
-  float update_parent_time  = 0.0;
-  float update_edges_time   = 0.0;
+  float init_min_incident_edge_time = 0.0;
+  float min_incident_edge_time      = 0.0;
+  float contract_edges_time         = 0.0;
+  float get_components_time         = 0.0;
+  float update_parent_time          = 0.0;
+  float update_edges_time           = 0.0;
 
   // Phase 2 times
   float assign_edges_to_chains_time              = 0.0;
@@ -411,7 +412,7 @@ int main(int argc, char *argv[]) {
     sw_step.reset();
     fill_init_min_incident_edge_map(min_incident_edge_map,
                                     edge_endpoints_array);
-    incidence_map_time += sw_step.elapsed().count();
+    init_min_incident_edge_time += sw_step.elapsed().count();
     if (opt.verbose && world.rank() == 0) {
       spdlog::info(
           "  Time to initialize and fill min incident edge map (s): {:.3f}",
@@ -538,7 +539,7 @@ int main(int argc, char *argv[]) {
       // Update the incidence map
       update_min_incident_edge_map(edge_contraction_array,
                                    min_incident_edge_map);
-      incidence_map_time += sw_step.elapsed().count();
+      min_incident_edge_time += sw_step.elapsed().count();
 
       ++round;
 
@@ -555,8 +556,14 @@ int main(int argc, char *argv[]) {
     spdlog::info(" Time for this phase (s): {:.3f}", sw_phase);
     if (opt.verbose) {
       spdlog::info(" Phase 1 time breakdown:");
-      spdlog::info("   Time to fill incidence map (s): {:.3f}",
-                   incidence_map_time);
+      spdlog::info(
+          "   Time to fill initial min incident edge map from provided "
+          "spanning tree edges (s): {:.3f}",
+          init_min_incident_edge_time);
+      spdlog::info(
+          "   Time to fill min incident edge map after contractions (s): "
+          "{:.3f}",
+          min_incident_edge_time);
       spdlog::info("   Time to contract edges (s): {:.3f}",
                    contract_edges_time);
       spdlog::info(
