@@ -1985,6 +1985,14 @@ void assign_points_cluster_ids(
   comm.barrier();
 }
 
+/**
+ * @brief Writes cluster labels to text files, writing one file per rank.
+ * Files are in the form point_id \t cluster_label in each row.
+ *
+ * @param point_to_cluster_id_map YGM map of point id -> cluster label.
+ * @param output_path File to write cluster data to. Each rank must
+ * receive its own file name (e.g., path_to_cluster_labels/rank.txt).
+ */
 void write_cluster_labels_one_txt_file_per_rank(
     ygm::container::map<id_t, cluster_id_t> &point_to_cluster_id_map,
     std::filesystem::path                    output_path) {
@@ -2014,9 +2022,16 @@ void write_cluster_labels_one_txt_file_per_rank(
   comm.barrier();
 }
 
+/**
+ * @brief Writes cluster labels a single-rank Metall datastore. Labels
+ * are saved as a vector of pairs (point_id, cluster_label).
+ *
+ * @param point_to_cluster_id_map YGM map of point id -> cluster label.
+ * @param output_path Path (as a string) to output Metall datastore.
+ */
 void write_cluster_labels_single_pm(
     ygm::container::map<id_t, cluster_id_t> &point_to_cluster_id_map,
-    const std::string                       &output_filename) {
+    const std::string                       &output_path) {
   ygm::comm &comm = point_to_cluster_id_map.comm();
 
   // Get local point ids and cluster labels
@@ -2034,10 +2049,8 @@ void write_cluster_labels_single_pm(
 
   MPI_Comm mpi_comm = comm.get_mpi_comm();
 
-  ygm::utility::timer timer;  // debug
-
   if (comm.rank() == 0) {
-    metall::manager manager(metall::create_only, output_filename);
+    metall::manager manager(metall::create_only, output_path);
     auto cluster_id_table = manager.construct<pm_point_to_cluster_id_t>(
         metall::unique_instance)(manager.get_allocator());
     cluster_id_table->reserve(num_points);
@@ -2056,7 +2069,6 @@ void write_cluster_labels_single_pm(
       std::vector<cluster_id_t> remote_labels =
           comm.mpi_recv<std::vector<cluster_id_t>>(r, 1, mpi_comm);
       for (size_t i = 0; i < remote_ids.size(); ++i) {
-        // cluster_id_table->emplace(remote_ids.at(i), remote_labels.at(i));
         cluster_id_table->emplace_back(
             std::make_pair(remote_ids.at(i), remote_labels.at(i)));
       }
