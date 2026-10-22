@@ -17,3 +17,10 @@ setup_ygm_target(run_distributed_hdbscan_clustering)
 setup_omp_target(run_distributed_hdbscan_clustering)
 setup_metall_target(run_distributed_hdbscan_clustering)
 setup_spdlog_target(run_distributed_hdbscan_clustering)
+
+
+add_basic_executable(min_incident_edge_map min_incident_edge_map.cpp)
+setup_ygm_target(min_incident_edge_map)
+setup_omp_target(min_incident_edge_map)
+setup_metall_target(min_incident_edge_map)
+setup_spdlog_target(min_incident_edge_map)

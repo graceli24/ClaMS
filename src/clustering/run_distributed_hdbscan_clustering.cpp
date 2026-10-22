@@ -137,6 +137,14 @@ int main(int argc, char *argv[]) {
     show_help();
   }
 
+  if (opt.mst_edges_path.empty()) {
+    if (world.rank() == 0) {
+      spdlog::info("Error: No mst path is provided");
+      show_help();
+    }
+    std::exit(EXIT_FAILURE);
+  }
+
   if (opt.cluster_ids_out_path.empty()) {
     if (world.rank() == 0) {
       spdlog::info("Error: No output path for cluster labels is provided");
@@ -375,7 +383,7 @@ int main(int argc, char *argv[]) {
     }
     // Sort the MST edges and add them to our edge arrays
     else {
-      sort_and_process_mst_edges_into_maps(
+      sort_and_process_mst_edges_into_arrays(
           mst_edge_vector, edge_endpoints_array, edge_contraction_array);
     }
 
@@ -1227,6 +1235,11 @@ int main(int argc, char *argv[]) {
                MPI_SUM, world.get_mpi_comm());
 
       start_cluster_id = start_cluster_id - local_selected_clusters.size();
+
+      // debug
+      world.cout0() << "Root chain second child: "
+                    << root_chain_second_child.name << " with size "
+                    << root_chain_second_child.size << std::endl;
 
       // Assign points cluster IDs
       assign_points_cluster_ids(

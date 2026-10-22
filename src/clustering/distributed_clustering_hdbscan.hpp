@@ -5,7 +5,8 @@
 #include <utility>
 #include <vector>
 
-#include <boost/unordered/unordered_flat_map.hpp>
+// #include <boost/unordered/unordered_flat_map.hpp>
+#include <boost/container/vector.hpp>
 #include <cereal/types/array.hpp>
 
 #include <ygm/comm.hpp>
@@ -18,19 +19,17 @@
 
 #include "distributed_clustering_types.hpp"
 
-#include <metall/container/unordered_flat_map.hpp>
+// #include <metall/container/unordered_flat_map.hpp>
+#include <metall/container/vector.hpp>
 #include <metall/metall.hpp>
 #include <metall/utility/metall_mpi_adaptor.hpp>
 
 namespace clams::clustering {
 
-// Cluster ID table that can be stored in a Metall datastore.
-// This table also can be used as a regular in-memory table thanks to the
-// scoped_fallback_allocator_type.
-using pm_cluster_id_table_t = metall::container::unordered_flat_map<
-    id_t, id_t, std::hash<id_t>, std::equal_to<id_t>,
-    metall::manager::scoped_fallback_allocator_type<
-        std::pair<const id_t, id_t>>>;
+// Type for writing cluster labels to metal file as a vector of (point id,
+// cluster label) pairs
+using pm_point_to_cluster_id_t =
+    metall::container::vector<std::pair<id_t, cluster_id_t>>;
 
 /**
  * @brief Calculate cluster size, stability, and stability traversing up
@@ -1768,6 +1767,7 @@ void assign_points_cluster_ids(
 
   // All points in the data set start out as noise points and when we
   // pick clusters, this will be over written with the cluster id
+  point_to_cluster_id_map.clear();
   edge_endpoints_array.for_all(
       [&point_to_cluster_id_map]([[maybe_unused]] const id_t &edge_id,
                                  const std::pair<id_t, id_t> &edge_endpoints) {
@@ -1778,11 +1778,15 @@ void assign_points_cluster_ids(
       });
   comm.barrier();
 
+  comm.cout0()
+      << "Added points to point_to_cluster_id_map, which now has size = "
+      << point_to_cluster_id_map.size() << std::endl;  // debug
+
   // Labels the endpoints of an edge with the provided cluster id
   static auto label_edge_endpoints_lambda =
       []([[maybe_unused]] const id_t &edge_id,
          const std::pair<id_t, id_t> &edge_endpoints,
-         const cluster_id_t &cluster_id, auto point_to_cluster_id_map_ptr) {
+         const cluster_id_t &cluster_id, auto &point_to_cluster_id_map_ptr) {
         auto set_point_label_lambda = []([[maybe_unused]] const id_t &point_id,
                                          cluster_id_t       &cluster_id,
                                          const cluster_id_t &new_cluster_id) {
@@ -1800,8 +1804,8 @@ void assign_points_cluster_ids(
   static auto label_leaf_cluster_edge_endpoints_lambda =
       []([[maybe_unused]] const supernode_t &cluster_name,
          const full_leaf_cluster_info       &cluster_info,
-         const cluster_id_t &cluster_id, auto edge_endpoints_array_ptr,
-         auto point_to_cluster_id_map_ptr) {
+         const cluster_id_t &cluster_id, auto &edge_endpoints_array_ptr,
+         auto &point_to_cluster_id_map_ptr) {
         for (const edge_id_with_dist_t &edge : cluster_info.edges) {
           edge_endpoints_array_ptr->async_visit(
               edge.first, label_edge_endpoints_lambda, cluster_id,
@@ -1814,8 +1818,8 @@ void assign_points_cluster_ids(
   static auto label_root_chain_cluster_edge_endpoints_lambda =
       []([[maybe_unused]] const id_t      &cluster_edge_id,
          std::vector<edge_id_with_dist_t> &edges,
-         const cluster_id_t &cluster_id, auto edge_endpoints_array_ptr,
-         auto point_to_cluster_id_map_ptr) {
+         const cluster_id_t &cluster_id, auto &edge_endpoints_array_ptr,
+         auto &point_to_cluster_id_map_ptr) {
         for (const edge_id_with_dist_t &edge : edges) {
           edge_endpoints_array_ptr->async_visit(
               edge.first, label_edge_endpoints_lambda, cluster_id,
@@ -1849,13 +1853,11 @@ void assign_points_cluster_ids(
         if (it->first > starting_cluster_edge_id) {
           break;
         } else {
-          full_cluster_info cluster_info = it->second;
-
           // Set this cluster's label as the provided label
           it->second.cluster_id = cluster_id;
 
           // Label each edge in the cluster with the provided label
-          for (const edge_id_with_dist_t &edge : cluster_info.edges) {
+          for (const edge_id_with_dist_t &edge : it->second.edges) {
             edge_endpoints_array_ptr->async_visit(
                 edge.first, label_edge_endpoints_lambda, cluster_id,
                 point_to_cluster_id_map_ptr);
@@ -1863,17 +1865,17 @@ void assign_points_cluster_ids(
 
           // Visit this cluster's non-chain child and propagate the cluster
           // label
-          if (cluster_info.child.second == 1) {
+          if (it->second.child.second == 1) {
             leaf_cluster_map_ptr->async_visit(
-                cluster_info.child, label_leaf_cluster_edge_endpoints_lambda,
+                it->second.child, label_leaf_cluster_edge_endpoints_lambda,
                 cluster_id, edge_endpoints_array_ptr,
                 point_to_cluster_id_map_ptr);
           } else {
-            chain_map_ptr->async_visit(
-                cluster_info.child, label_points_functor(),
-                std::numeric_limits<id_t>::max(), cluster_id,
-                leaf_cluster_map_ptr, edge_endpoints_array_ptr,
-                point_to_cluster_id_map_ptr);
+            chain_map_ptr->async_visit(it->second.child, label_points_functor(),
+                                       std::numeric_limits<id_t>::max(),
+                                       cluster_id, leaf_cluster_map_ptr,
+                                       edge_endpoints_array_ptr,
+                                       point_to_cluster_id_map_ptr);
           }
         }
       }
@@ -1892,10 +1894,14 @@ void assign_points_cluster_ids(
     }
   };
 
+  ygm::utility::timer timer;  // debug
+
   // Track whether we have selected a root chain cluster in our flat
   // clustering and if so, which one and its cluster id (it should be 0)
-  id_t selected_root_chain_cluster_edge_id = 0;
-  id_t selected_root_chain_cluster_id      = 0;
+  static id_t selected_root_chain_cluster_edge_id;
+  static id_t selected_root_chain_cluster_id;
+  selected_root_chain_cluster_edge_id = 0;
+  selected_root_chain_cluster_id      = 0;
 
   for (uint32_t i = 0; i < local_selected_clusters.size(); ++i) {
     const cluster_name_t cluster_name = local_selected_clusters.at(i);
@@ -1912,6 +1918,8 @@ void assign_points_cluster_ids(
     else if (cluster_name.first == root_chain_supernode) {
       selected_root_chain_cluster_edge_id = cluster_name.second;
       selected_root_chain_cluster_id      = cluster_id;
+      std::cout << "Selected root chain cluster with edge id "
+                << selected_root_chain_cluster_edge_id << std::endl;  // debug
     }
     // If the selected cluster is in a non-root chain, use the label points
     // functor
@@ -1930,10 +1938,71 @@ void assign_points_cluster_ids(
   MPI_Allreduce(MPI_IN_PLACE, &selected_root_chain_cluster_id, 1, mpi_id_type(),
                 MPI_MAX, comm.get_mpi_comm());
 
+  comm.cout0() << "Time to label selected clusters not in root chain: "
+               << timer.elapsed() << std::endl;  // debug
+
+  comm.cout0() << "After processing local clusters, selected root chain "
+                  "cluster with edge id: "
+               << selected_root_chain_cluster_edge_id << " given cluster id "
+               << selected_root_chain_cluster_id << std::endl;  // debug
+
   if (selected_root_chain_cluster_edge_id > 0) {
+    timer.reset();
+
+    static int num_root_chain_clusters_to_label;
+    num_root_chain_clusters_to_label = 0;
+    static int num_leaf_clusters_to_visit;
+    num_leaf_clusters_to_visit = 0;
+    static int num_chains_to_visit;
+    num_chains_to_visit = 0;
+    root_chain_cluster_map.for_all([](const id_t              &cluster_edge_id,
+                                      root_chain_cluster_info &cluster_info) {
+      // If this root chain cluster is the selected cluster or below it,
+      // then label it
+      if (cluster_edge_id <= selected_root_chain_cluster_edge_id) {
+        ++num_root_chain_clusters_to_label;
+
+        if (cluster_edge_id == selected_root_chain_cluster_edge_id) {
+          std::cout << "Size of selected root chain cluster " << cluster_edge_id
+                    << ": " << cluster_info.size << std::endl;
+        }
+
+        if (cluster_info.child.second == 1) {
+          ++num_leaf_clusters_to_visit;
+        } else {
+          ++num_chains_to_visit;
+        }
+      }
+    });
+    comm.barrier();
+
+    comm.cout0() << "Number of root chain clusters to label: "
+                 << ygm::sum(num_root_chain_clusters_to_label, comm)
+                 << ", per rank max = "
+                 << ygm::max(num_root_chain_clusters_to_label, comm)
+                 << ", per rank min = "
+                 << ygm::min(num_root_chain_clusters_to_label, comm)
+                 << std::endl;
+
+    comm.cout0() << "Number of child leaf clusters to visit and label: "
+                 << ygm::sum(num_leaf_clusters_to_visit, comm)
+                 << ", per rank max = "
+                 << ygm::max(num_leaf_clusters_to_visit, comm)
+                 << ", per rank min = "
+                 << ygm::min(num_leaf_clusters_to_visit, comm) << std::endl;
+
+    comm.cout0() << "Number of child chains to visit and label: "
+                 << ygm::sum(num_chains_to_visit, comm)
+                 << ", per rank max = " << ygm::max(num_chains_to_visit, comm)
+                 << ", per rank min = " << ygm::min(num_chains_to_visit, comm)
+                 << std::endl;
+
+    comm.cout0() << "Time get root chain stats: " << timer.elapsed()
+                 << std::endl;  // debug
+    timer.reset();
+
     auto label_root_chain_cluster_lambda =
-        [selected_root_chain_cluster_edge_id, selected_root_chain_cluster_id,
-         chain_map_ptr, leaf_cluster_map_ptr, root_chain_cluster_edges_map_ptr,
+        [chain_map_ptr, leaf_cluster_map_ptr, root_chain_cluster_edges_map_ptr,
          edge_endpoints_array_ptr,
          point_to_cluster_id_map_ptr](const id_t              &cluster_edge_id,
                                       root_chain_cluster_info &cluster_info) {
@@ -1964,10 +2033,23 @@ void assign_points_cluster_ids(
                   std::numeric_limits<id_t>::max(),
                   selected_root_chain_cluster_id, leaf_cluster_map_ptr,
                   edge_endpoints_array_ptr, point_to_cluster_id_map_ptr);
+
+              // debug
+              if (cluster_info.child.second == 12) {
+                std::cout << "Visiting bottom root chain child: "
+                          << cluster_info.child << " with size "
+                          << cluster_info.child_size << std::endl;
+              }
             }
           }
         };
     root_chain_cluster_map.for_all(label_root_chain_cluster_lambda);
+    comm.barrier();
+
+    comm.cout0() << "Time to label all of selected root cluster except the "
+                    "second chain child: "
+                 << timer.elapsed() << std::endl;  // debug
+    timer.reset();
 
     // Also handle labeling the second root chain child
     if (root_chain_second_child_name.second == 1) {
@@ -1982,7 +2064,14 @@ void assign_points_cluster_ids(
           std::numeric_limits<id_t>::max(), selected_root_chain_cluster_id,
           leaf_cluster_map_ptr, edge_endpoints_array_ptr,
           point_to_cluster_id_map_ptr);
+
+      std::cout << "Visiting root chain second child: "
+                << root_chain_second_child_name << std::endl;
     }
+    comm.barrier();
+
+    comm.cout0() << "Time to label points in second root chain child: "
+                 << timer.elapsed() << std::endl;  // debug
   }
   comm.barrier();
 
@@ -2042,16 +2131,16 @@ void write_cluster_labels_single_pm(
 
   if (comm.rank() == 0) {
     metall::manager manager(metall::create_only, output_filename);
-    auto            cluster_id_table = manager.construct<pm_cluster_id_table_t>(
+    auto cluster_id_table = manager.construct<pm_point_to_cluster_id_t>(
         metall::unique_instance)(manager.get_allocator());
     cluster_id_table->reserve(num_points);
 
     // Write own edges
     for (size_t i = 0; i < point_ids.size(); ++i) {
-      cluster_id_table->emplace(point_ids.at(i), cluster_labels.at(i));
+      // cluster_id_table->emplace(point_ids.at(i), cluster_labels.at(i));
+      cluster_id_table->emplace_back(
+          std::make_pair(point_ids.at(i), cluster_labels.at(i)));
     }
-    std::cout << "Wrote labels from rank 0. Time elapsed (s): "
-              << timer.elapsed() << std::endl;  // debug
 
     // Write edges for all other ranks
     for (int r = 1; r < comm.size(); ++r) {
@@ -2060,11 +2149,10 @@ void write_cluster_labels_single_pm(
       std::vector<cluster_id_t> remote_labels =
           comm.mpi_recv<std::vector<cluster_id_t>>(r, 1, mpi_comm);
       for (size_t i = 0; i < remote_ids.size(); ++i) {
-        cluster_id_table->emplace(remote_ids.at(i), remote_labels.at(i));
+        // cluster_id_table->emplace(remote_ids.at(i), remote_labels.at(i));
+        cluster_id_table->emplace_back(
+            std::make_pair(remote_ids.at(i), remote_labels.at(i)));
       }
-      std::cout << "Wrote labels from rank " << r
-                << ". Time elapsed (s): " << timer.elapsed()
-                << std::endl;  // debug
     }
 
   } else {

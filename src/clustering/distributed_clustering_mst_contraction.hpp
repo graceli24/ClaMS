@@ -36,7 +36,7 @@ uint32_t LOCAL_COPY_NUM_SUPERNODES_THRESHOLD = 25000;
  * edge_contraction_info. This array is not filled with values yet, but needs to
  * have size equal to the number of edges when intialized.
  */
-void sort_and_process_mst_edges_into_maps(
+void sort_and_process_mst_edges_into_arrays(
     std::vector<std::pair<distance_t, std::pair<id_t, id_t>>> &mst_edge_vector,
     ygm::container::array<std::pair<id_t, id_t>> &edge_endpoints_array,
     ygm::container::array<edge_contraction_info> &edge_contraction_array) {
@@ -74,7 +74,7 @@ void sort_and_process_mst_edges_into_maps(
   edge_array.for_all(visit_sorted_array_lambda);
   comm.barrier();
 
-  comm.cout0() << "Time to fill YGM edge maps (s): " << timer.elapsed()
+  comm.cout0() << "Time to fill YGM edge arrays (s): " << timer.elapsed()
                << std::endl;
 }
 
