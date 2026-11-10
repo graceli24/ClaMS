@@ -269,7 +269,4 @@ endfunction()
 add_subdirectory(src)
 add_subdirectory(test)
 add_subdirectory(script)
-<<<<<<< HEAD
 add_subdirectory(antibody_distance_example)
-=======
->>>>>>> develop
