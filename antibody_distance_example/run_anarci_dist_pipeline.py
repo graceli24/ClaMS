@@ -10,11 +10,11 @@ from pathlib import Path
 
 # sys.path.append("./../script/benchmark")
 SCRIPT_DIR = Path(__file__).resolve().parent
-BENCHMARK_DIR = SCRIPT_DIR.parent / "script" / "benchmark"
-sys.path.insert(0, str(BENCHMARK_DIR))
+SCRIPT_DIR = SCRIPT_DIR.parent
+sys.path.insert(0, str(SCRIPT_DIR))
 
-from bench_utilities import *
-
+from script.benchmark.bench_utilities import add_cmd, add_msg, add_srun_cmd, set_up_batch_header, add_parameter_msg
+from script.utilities import create_dir, parse_float_list, parse_range
 
 def parse_options():
     # Set up argument parsing

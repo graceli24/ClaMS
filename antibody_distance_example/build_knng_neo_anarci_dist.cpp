@@ -328,6 +328,8 @@ int main(int argc, char **argv) {
       comm.cout0() << "\n<<Construct distributed PM kNNG Datastore>>"
                    << std::endl;
 
+      // cls::dist_pm_knng<id_t, saltatlas::pm_feature_vector<fe_t>, dist_t>
+      //     pm_knng(comm.comm());
       cls::dist_pm_knng_t pm_knng(comm.comm());
       pm_knng.create(opt.scratchpath);
       ygm::comm ygm_comm(comm.comm());

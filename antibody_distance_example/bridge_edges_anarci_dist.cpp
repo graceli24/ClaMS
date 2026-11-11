@@ -44,7 +44,11 @@ struct hash<pair<T1, T2>> {
 }  // namespace std
 
 namespace cls = clams;
-using cc_id_t = cls::id_t;
+// using point_t        = saltatlas::pm_feature_vector<amino_acid_t>;
+// using dist_pm_knng_t = cls::dist_pm_knng<cls::id_t, point_t,
+// cls::distance_t>;
+using point_t        = cls::point_t;
+using dist_pm_knng_t = cls::dist_pm_knng_t;
 
 // Translates id_t to MPI type
 MPI_Datatype mpi_id_type() {
@@ -176,7 +180,7 @@ int main(int argc, char **argv) {
 
   {
     step_timer.reset();
-    cls::dist_pm_knng_t pm_knng(comm.get_mpi_comm());
+    dist_pm_knng_t pm_knng(comm.get_mpi_comm());
     pm_knng.open(opt.pm_knng_datastore_path);
 
     static auto &knng   = pm_knng.get_knng();
@@ -221,27 +225,26 @@ int main(int argc, char **argv) {
         << step_timer.elapsed() << std::endl;
     step_timer.reset();
 
-    std::vector<std::shared_ptr<
-        ygm::container::bag<std::pair<cls::id_t, cls::point_t>>>>
+    std::vector<
+        std::shared_ptr<ygm::container::bag<std::pair<cls::id_t, point_t>>>>
         bags;
-    std::map<cls::id_t, std::shared_ptr<ygm::container::bag<
-                            std::pair<cls::id_t, cls::point_t>>>>
-        bag_map;
+    std::map<cls::id_t, std::shared_ptr<
+                            ygm::container::bag<std::pair<cls::id_t, point_t>>>>
+                                                                     bag_map;
     static std::map<cls::id_t, std::shared_ptr<ygm::container::bag<
-                                   std::pair<cls::id_t, cls::point_t>>>>
-        *s_bag_map;
+                                   std::pair<cls::id_t, point_t>>>> *s_bag_map;
     s_bag_map = &bag_map;
 
     bags.reserve(rep_set.size());
     for (auto &rep : rep_set) {
       bags.emplace_back(
-          new ygm::container::bag<std::pair<cls::id_t, cls::point_t>>(comm));
+          new ygm::container::bag<std::pair<cls::id_t, point_t>>(comm));
       bag_map.emplace(rep, bags.back());
     }
 
     disjoint_set.for_all([&](const auto &p, const auto &rep) {
       comm.async(
-          cls::dist_pm_knng_t::get_owner(p, comm.size()),
+          dist_pm_knng_t::get_owner(p, comm.size()),
           [](cls::id_t p, cls::id_t rep) {
             auto point = pstore.find(p);
             if (point == pstore.end()) {
@@ -265,15 +268,15 @@ int main(int argc, char **argv) {
     comm.cout0() << "  Time to rebalance bags (s): " << step_timer.elapsed()
                  << std::endl;
 
-    static cc_id_t num_components;
+    static cls::id_t num_components;
     num_components = bags.size();
     comm.cout0() << "CC took (s): " << cc_timer.elapsed() << std::endl;
     comm.cout0() << "#of CCs: " << bags.size() << std::endl;
     step_timer.reset();
 
     // Get the LCC component id and size on all ranks
-    cc_id_t lcc_component_id = 0;
-    size_t  lcc_size         = 0;
+    cls::id_t lcc_component_id = 0;
+    size_t    lcc_size         = 0;
     {
       cls::id_t i = 0;
       for (auto &b : bags) {
@@ -295,12 +298,12 @@ int main(int argc, char **argv) {
 
       comm.cout0() << "Getting component sizes" << std::endl;
       // (Component id, component size)
-      static std::vector<std::pair<cc_id_t, cls::id_t>> all_component_sizes;
-      cc_id_t                                           i = 0;
+      static std::vector<std::pair<cls::id_t, cls::id_t>> all_component_sizes;
+      cls::id_t                                           i = 0;
       for (auto &b : bags) {
         size_t size = b->size();
         if (comm.rank() == 0) {
-          std::pair<cc_id_t, cls::id_t> component_info{i, size};
+          std::pair<cls::id_t, cls::id_t> component_info{i, size};
           all_component_sizes.push_back(component_info);
         }
         ++i;
@@ -381,8 +384,8 @@ int main(int argc, char **argv) {
       prefix_sums.push_back(lcc_size);
 
       // Get the sampled points on each rank
-      std::vector<std::pair<cls::id_t, cls::point_t>> sampled_points;
-      int                                             rank = comm.rank();
+      std::vector<std::pair<cls::id_t, point_t>> sampled_points;
+      int                                        rank = comm.rank();
       auto local_lcc_begin = bags[lcc_component_id]->local_begin();
       for (uint64_t &idx : idxs) {
         if ((prefix_sums.at(rank) <= idx) & (idx < prefix_sums.at(rank + 1))) {
@@ -414,13 +417,13 @@ int main(int argc, char **argv) {
 
     // YGM map of (component id i, component id j) -> best bridge edge (point
     // id, point id, distance)
-    ygm::container::map<std::pair<cc_id_t, cc_id_t>,
+    ygm::container::map<std::pair<cls::id_t, cls::id_t>,
                         std::tuple<cls::id_t, cls::id_t, cls::distance_t>>
         bridge_edge_map(comm);
     {
       ygm::utility::timer step_timer;
 
-      std::vector<std::pair<cls::id_t, cls::point_t>> reps;
+      std::vector<std::pair<cls::id_t, point_t>> reps;
       reps.resize(num_components);
 
       // Choose a single rep from each component
@@ -447,7 +450,7 @@ int main(int argc, char **argv) {
         MPI_Request req[3];
         MPI_Status  stat[3];
 
-        static std::vector<std::pair<cls::id_t, cls::point_t>> *s_reps;
+        static std::vector<std::pair<cls::id_t, point_t>> *s_reps;
         s_reps = &reps;
 
         YGM_ASSERT_MPI(MPI_Ibcast(&seed, 1, MPI_UINT64_T, 0,
@@ -462,15 +465,15 @@ int main(int argc, char **argv) {
 
         std::default_random_engine random(seed);
 
-        for (cc_id_t i = 0; i < num_components; i++) {
-          cc_id_t chosen_element = std::uniform_int_distribution<ssize_t>{
+        for (cls::id_t i = 0; i < num_components; i++) {
+          cls::id_t chosen_element = std::uniform_int_distribution<ssize_t>{
               0, static_cast<long>(bag_sizes[i] - 1)}(random);
           if (chosen_element < (bag_prefix_sum[i] - bag_local_sizes[i]))
             continue;
           chosen_element -= (bag_prefix_sum[i] - bag_local_sizes[i]);
           if (chosen_element >= bag_local_sizes[i]) continue;
 
-          std::pair<cls::id_t, cls::point_t> element =
+          std::pair<cls::id_t, point_t> element =
               *std::next(bags[i]->local_begin(), chosen_element);
           reps[i] = element;
 
@@ -486,7 +489,7 @@ int main(int argc, char **argv) {
       step_timer.reset();
 
       // Since we're only doing rep distances, clear the other component bags
-      for (cc_id_t i = 0; i < num_components; i++) {
+      for (cls::id_t i = 0; i < num_components; i++) {
         if (i == lcc_component_id) {
           continue;
         };
@@ -500,7 +503,7 @@ int main(int argc, char **argv) {
 
       // Get the best bridge edge from each small component rep to the (sampled)
       // LCC
-      for (cc_id_t i = 0; i < num_components; i++) {
+      for (cls::id_t i = 0; i < num_components; i++) {
         if (i == lcc_component_id) {
           continue;
         }
@@ -523,9 +526,9 @@ int main(int argc, char **argv) {
           cls::distance_t min_dist =
               std::numeric_limits<cls::distance_t>::max();
 
-          cls::id_t    best_point_id_lcc = 0;
-          cls::id_t    point_id_i        = reps[i].first;
-          cls::point_t point_i           = reps[i].second;
+          cls::id_t best_point_id_lcc = 0;
+          cls::id_t point_id_i        = reps[i].first;
+          point_t   point_i           = reps[i].second;
 
           for (auto ite = bags[lcc_component_id]->local_begin();
                ite != bags[lcc_component_id]->local_end(); ite++) {
@@ -574,7 +577,7 @@ int main(int argc, char **argv) {
         // Make a local copy of weight of the best bridge edges to the LCC
         std::vector<cls::distance_t> dist_to_lcc_vector(num_components);
         for (const auto &[component_pair, bridge_edge] : bridge_edge_map) {
-          cc_id_t small_component_id = component_pair.first;
+          cls::id_t small_component_id = component_pair.first;
           if (component_pair.first == lcc_component_id) {
             small_component_id = component_pair.second;
           }
@@ -593,17 +596,17 @@ int main(int argc, char **argv) {
         // bridge edge - only store these best bridge edges if they have
         // distance
         // <= the better of the two small component bridge edges to the LCC
-        for (cc_id_t i = 0; i < num_components; i++) {
+        for (cls::id_t i = 0; i < num_components; i++) {
           if ((i != lcc_component_id) & (i % comm.size() == comm.rank())) {
-            for (cc_id_t j = 0; j < num_components; j++) {
+            for (cls::id_t j = 0; j < num_components; j++) {
               if ((i == j) | (j == lcc_component_id)) {
                 continue;
               }
 
-              cls::id_t    point_id_i = reps[i].first;
-              cls::point_t point_i    = reps[i].second;
-              cls::id_t    point_id_j = reps[j].first;
-              cls::point_t point_j    = reps[j].second;
+              cls::id_t point_id_i = reps[i].first;
+              point_t   point_i    = reps[i].second;
+              cls::id_t point_id_j = reps[j].first;
+              point_t   point_j    = reps[j].second;
 
               cls::distance_t rep_dist =
                   anarci_substitution_distance(point_i, point_j);
@@ -634,7 +637,7 @@ int main(int argc, char **argv) {
     // Add the bridge edges found to the knng
     for (auto &[component_pair, bridge_edge] : bridge_edge_map) {
       comm.async(
-          cls::dist_pm_knng_t::get_owner(std::get<0>(bridge_edge), comm.size()),
+          dist_pm_knng_t::get_owner(std::get<0>(bridge_edge), comm.size()),
           [](cls::id_t a, cls::id_t b, cls::distance_t dist) {
             knng[a].emplace_back(b, dist);
           },
